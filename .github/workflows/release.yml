@@ -19,10 +19,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # Versione stabile di Node
+          node-version: 22 # Versione di Node richiesta dalle librerie
 
       - name: Installazione Dipendenze
-        run: npm install
+        run: |
+          npm ci --ignore-scripts
+          npx electron-builder install-app-deps
 
       - name: Build e Pacchettizzazione
         run: |
