@@ -23,8 +23,8 @@ jobs:
 
       - name: Installazione Dipendenze
         run: |
-          npm ci --ignore-scripts
-          npx electron-builder install-app-deps
+          npm ci
+          npx @electron/rebuild -f -w better-sqlite3
 
       - name: Build e Pacchettizzazione
         run: |
