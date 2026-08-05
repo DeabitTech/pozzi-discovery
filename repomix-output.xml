@@ -1,0 +1,3131 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+resources/
+  icon.png
+src/
+  main/
+    db.ts
+    index.ts
+  preload/
+    index.d.ts
+    index.ts
+  renderer/
+    src/
+      assets/
+        base.css
+        electron.svg
+        main.css
+        wavy-lines.svg
+      components/
+        AdminArea.tsx
+        ClienteModal.tsx
+        ClientiTable.tsx
+        ListArea.tsx
+        MapArea.tsx
+        NuovoPozzoModal.tsx
+        Versions.tsx
+      store/
+        appSlice.ts
+        index.ts
+      App.tsx
+      env.d.ts
+      main.tsx
+      theme.ts
+    index.html
+.editorconfig
+.gitignore
+.npmrc
+.prettierignore
+.prettierrc.yaml
+database.sqlite
+database.sqlite-shm
+database.sqlite-wal
+electron-builder.yml
+electron.vite.config.ts
+eslint.config.mjs
+package.json
+README.md
+tsconfig.json
+tsconfig.node.json
+tsconfig.web.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/main/db.ts">
+import type { Database as SQLiteDatabase } from 'better-sqlite3';
+import Database from 'better-sqlite3';
+import { app } from 'electron';
+import path from 'path';
+
+// Define the path for the SQLite database.
+// In development, store it in the project root.
+// In production (portable mode), store it next to the executable.
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const dbPath = isDev 
+  ? path.join(__dirname, '../../database.sqlite')
+  : path.join(path.dirname(app.getPath('exe')), 'database.sqlite');
+
+const db: SQLiteDatabase = new Database(dbPath, { verbose: console.log });
+db.pragma('journal_mode = WAL');
+
+export function initDB() {
+  // Check if tables exist, create them if they don't.
+  const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='clienti'").get();
+  
+  if (!tableExists) {
+    db.exec(`
+      CREATE TABLE clienti (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ragione_sociale TEXT,
+        codice_fiscale TEXT,
+        partita_iva TEXT,
+        legale_rappresentante TEXT,
+        indirizzo_sede_legale TEXT
+      );
+
+      CREATE TABLE pozzi_clienti (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        comune TEXT,
+        localita TEXT,
+        foglio TEXT,
+        particella TEXT,
+        ettari_bagnati REAL,
+        scadenza_concessione TEXT,
+        coordinate TEXT,
+        id_cliente INTEGER,
+        FOREIGN KEY (id_cliente) REFERENCES clienti(id)
+      );
+
+      CREATE TABLE ettari_bagnati (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        comune TEXT,
+        localita TEXT,
+        foglio TEXT,
+        particella TEXT,
+        ettari REAL,
+        tipologia TEXT,
+        proprieta TEXT,
+        id_pozzo INTEGER,
+        FOREIGN KEY (id_pozzo) REFERENCES pozzi_clienti(id)
+      );
+    `);
+    console.log('Database schema created successfully.');
+  }
+}
+
+// Function to handle dynamic table alterations (Admin Area)
+export function runQuery(query: string, params: any[] = []) {
+    const stmt = db.prepare(query);
+    if (query.trim().toUpperCase().startsWith('SELECT')) {
+        return stmt.all(...params);
+    } else {
+        return stmt.run(...params);
+    }
+}
+
+export default db;
+</file>
+
+<file path="src/main/index.ts">
+import { app, shell, BrowserWindow, ipcMain, session } from 'electron'
+import { join } from 'path'
+import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import icon from '../../resources/icon.png?asset'
+import { initDB, runQuery } from './db'
+
+function createWindow(): void {
+  // Create the browser window.
+  const mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show()
+    mainWindow.maximize()
+  })
+
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+
+  // HMR for renderer base on electron-vite cli.
+  // Load the remote URL for development or the local html file for production.
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+}
+
+
+// This method will be called when Electron has finished
+// initialization and is ready to create browser windows.
+// Some APIs can only be used after this event occurs.
+app.whenReady().then(() => {
+  // Set app user model id for windows
+  electronApp.setAppUserModelId('com.electron')
+
+  // Default open or close DevTools by F12 in development
+  // and ignore CommandOrControl + R in production.
+  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window)
+  })
+
+  // IPC test
+  ipcMain.on('ping', () => console.log('pong'))
+
+  // Initialize SQLite database
+  initDB();
+
+  // IPC handlers for database queries
+  ipcMain.handle('db-query', async (_event, query: string, params: any[]) => {
+    try {
+      return { success: true, data: runQuery(query, params) };
+    } catch (error: any) {
+      console.error('Database query error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // CSP: two separate policies for dev and prod.
+  // Dev needs 'unsafe-inline' for @vitejs/plugin-react HMR preamble, plus OSM tile domains.
+  // Prod uses a strict script-src with no unsafe-inline.
+  const cspDev =
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.openstreetmap.org; " +
+    "connect-src 'self' ws://localhost:* http://localhost:*"
+
+  const cspProd =
+    "default-src 'self'; " +
+    "script-src 'self'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.openstreetmap.org; " +
+    "connect-src 'self'"
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [is.dev ? cspDev : cspProd]
+      }
+    })
+  })
+
+  createWindow()
+
+  app.on('activate', function () {
+    // On macOS it's common to re-create a window in the app when the
+    // dock icon is clicked and there are no other windows open.
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+// Quit when all windows are closed, except on macOS. There, it's common
+// for applications and their menu bar to stay active until the user quits
+// explicitly with Cmd + Q.
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
+})
+
+// In this file you can include the rest of your app's specific main process
+// code. You can also put them in separate files and require them here.
+</file>
+
+<file path="src/preload/index.d.ts">
+import { ElectronAPI } from '@electron-toolkit/preload'
+
+declare global {
+  interface Window {
+    electron: ElectronAPI
+    api: {
+      dbQuery: (query: string, params?: any[]) => Promise<{ success: boolean; data?: any; error?: string }>
+    }
+  }
+}
+</file>
+
+<file path="src/preload/index.ts">
+import { contextBridge, ipcRenderer } from 'electron'
+import { electronAPI } from '@electron-toolkit/preload'
+
+// Custom APIs for renderer
+const api = {
+  dbQuery: (query: string, params: any[] = []) => ipcRenderer.invoke('db-query', query, params)
+}
+
+// Use `contextBridge` APIs to expose Electron APIs to
+// renderer only if context isolation is enabled, otherwise
+// just add to the DOM global.
+if (process.contextIsolated) {
+  try {
+    contextBridge.exposeInMainWorld('electron', electronAPI)
+    contextBridge.exposeInMainWorld('api', api)
+  } catch (error) {
+    console.error(error)
+  }
+} else {
+  // @ts-ignore (define in dts)
+  window.electron = electronAPI
+  // @ts-ignore (define in dts)
+  window.api = api
+}
+</file>
+
+<file path="src/renderer/src/assets/base.css">
+:root {
+  --ev-c-white: #ffffff;
+  --ev-c-white-soft: #f8f8f8;
+  --ev-c-white-mute: #f2f2f2;
+
+  --ev-c-black: #1b1b1f;
+  --ev-c-black-soft: #222222;
+  --ev-c-black-mute: #282828;
+
+  --ev-c-gray-1: #515c67;
+  --ev-c-gray-2: #414853;
+  --ev-c-gray-3: #32363f;
+
+  --ev-c-text-1: rgba(255, 255, 245, 0.86);
+  --ev-c-text-2: rgba(235, 235, 245, 0.6);
+  --ev-c-text-3: rgba(235, 235, 245, 0.38);
+
+  --ev-button-alt-border: transparent;
+  --ev-button-alt-text: var(--ev-c-text-1);
+  --ev-button-alt-bg: var(--ev-c-gray-3);
+  --ev-button-alt-hover-border: transparent;
+  --ev-button-alt-hover-text: var(--ev-c-text-1);
+  --ev-button-alt-hover-bg: var(--ev-c-gray-2);
+}
+
+:root {
+  --color-background: var(--ev-c-black);
+  --color-background-soft: var(--ev-c-black-soft);
+  --color-background-mute: var(--ev-c-black-mute);
+
+  --color-text: var(--ev-c-text-1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;
+}
+
+ul {
+  list-style: none;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-background);
+  line-height: 1.6;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+</file>
+
+<file path="src/renderer/src/assets/electron.svg">
+<svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="64" cy="64" r="64" fill="#2F3242"/>
+  <ellipse cx="63.9835" cy="23.2036" rx="4.48794" ry="4.495" stroke="#A2ECFB" stroke-width="3.6" stroke-linecap="round"/>
+  <path d="M51.3954 39.5028C52.3733 39.6812 53.3108 39.033 53.4892 38.055C53.6676 37.0771 53.0194 36.1396 52.0414 35.9612L51.3954 39.5028ZM28.6153 43.5751L30.1748 44.4741L30.1748 44.4741L28.6153 43.5751ZM28.9393 60.9358C29.4332 61.7985 30.5329 62.0976 31.3957 61.6037C32.2585 61.1098 32.5575 60.0101 32.0636 59.1473L28.9393 60.9358ZM37.6935 66.7457C37.025 66.01 35.8866 65.9554 35.1508 66.6239C34.415 67.2924 34.3605 68.4308 35.029 69.1666L37.6935 66.7457ZM53.7489 81.7014L52.8478 83.2597L53.7489 81.7014ZM96.9206 89.515C97.7416 88.9544 97.9526 87.8344 97.3919 87.0135C96.8313 86.1925 95.7113 85.9815 94.8904 86.5422L96.9206 89.515ZM52.0414 35.9612C46.4712 34.9451 41.2848 34.8966 36.9738 35.9376C32.6548 36.9806 29.0841 39.1576 27.0559 42.6762L30.1748 44.4741C31.5693 42.0549 34.1448 40.3243 37.8188 39.4371C41.5009 38.5479 46.1547 38.5468 51.3954 39.5028L52.0414 35.9612ZM27.0559 42.6762C24.043 47.9029 25.2781 54.5399 28.9393 60.9358L32.0636 59.1473C28.6579 53.1977 28.1088 48.0581 30.1748 44.4741L27.0559 42.6762ZM35.029 69.1666C39.6385 74.24 45.7158 79.1355 52.8478 83.2597L54.6499 80.1432C47.8081 76.1868 42.0298 71.5185 37.6935 66.7457L35.029 69.1666ZM52.8478 83.2597C61.344 88.1726 70.0465 91.2445 77.7351 92.3608C85.359 93.4677 92.2744 92.6881 96.9206 89.515L94.8904 86.5422C91.3255 88.9767 85.4902 89.849 78.2524 88.7982C71.0793 87.7567 62.809 84.8612 54.6499 80.1432L52.8478 83.2597ZM105.359 84.9077C105.359 81.4337 102.546 78.6127 99.071 78.6127V82.2127C100.553 82.2127 101.759 83.4166 101.759 84.9077H105.359ZM99.071 78.6127C95.5956 78.6127 92.7831 81.4337 92.7831 84.9077H96.3831C96.3831 83.4166 97.5892 82.2127 99.071 82.2127V78.6127ZM92.7831 84.9077C92.7831 88.3817 95.5956 91.2027 99.071 91.2027V87.6027C97.5892 87.6027 96.3831 86.3988 96.3831 84.9077H92.7831ZM99.071 91.2027C102.546 91.2027 105.359 88.3817 105.359 84.9077H101.759C101.759 86.3988 100.553 87.6027 99.071 87.6027V91.2027Z" fill="#A2ECFB"/>
+  <path d="M91.4873 65.382C90.8456 66.1412 90.9409 67.2769 91.7002 67.9186C92.4594 68.5603 93.5951 68.465 94.2368 67.7058L91.4873 65.382ZM99.3169 43.6354L97.7574 44.5344L99.3169 43.6354ZM84.507 35.2412C83.513 35.2282 82.6967 36.0236 82.6838 37.0176C82.6708 38.0116 83.4661 38.8279 84.4602 38.8409L84.507 35.2412ZM74.9407 39.8801C75.9127 39.6716 76.5315 38.7145 76.323 37.7425C76.1144 36.7706 75.1573 36.1517 74.1854 36.3603L74.9407 39.8801ZM53.7836 46.3728L54.6847 47.931L53.7836 46.3728ZM25.5491 80.9047C25.6932 81.8883 26.6074 82.5688 27.5911 82.4247C28.5747 82.2806 29.2552 81.3664 29.1111 80.3828L25.5491 80.9047ZM94.2368 67.7058C97.8838 63.3907 100.505 58.927 101.752 54.678C103.001 50.4213 102.9 46.2472 100.876 42.7365L97.7574 44.5344C99.1494 46.9491 99.3603 50.0419 98.2974 53.6644C97.2323 57.2945 94.9184 61.3223 91.4873 65.382L94.2368 67.7058ZM100.876 42.7365C97.9119 37.5938 91.7082 35.335 84.507 35.2412L84.4602 38.8409C91.1328 38.9278 95.7262 41.0106 97.7574 44.5344L100.876 42.7365ZM74.1854 36.3603C67.4362 37.8086 60.0878 40.648 52.8826 44.8146L54.6847 47.931C61.5972 43.9338 68.5948 41.2419 74.9407 39.8801L74.1854 36.3603ZM52.8826 44.8146C44.1366 49.872 36.9669 56.0954 32.1491 62.3927C27.3774 68.63 24.7148 75.2115 25.5491 80.9047L29.1111 80.3828C28.4839 76.1026 30.4747 70.5062 35.0084 64.5802C39.496 58.7143 46.2839 52.7889 54.6847 47.931L52.8826 44.8146Z" fill="#A2ECFB"/>
+  <path d="M49.0825 87.2295C48.7478 86.2934 47.7176 85.8059 46.7816 86.1406C45.8455 86.4753 45.358 87.5055 45.6927 88.4416L49.0825 87.2295ZM78.5635 96.4256C79.075 95.5732 78.7988 94.4675 77.9464 93.9559C77.0941 93.4443 75.9884 93.7205 75.4768 94.5729L78.5635 96.4256ZM79.5703 85.1795C79.2738 86.1284 79.8027 87.1379 80.7516 87.4344C81.7004 87.7308 82.71 87.2019 83.0064 86.2531L79.5703 85.1795ZM84.3832 64.0673H82.5832H84.3832ZM69.156 22.5301C68.2477 22.1261 67.1838 22.535 66.7799 23.4433C66.3759 24.3517 66.7848 25.4155 67.6931 25.8194L69.156 22.5301ZM45.6927 88.4416C47.5994 93.7741 50.1496 98.2905 53.2032 101.505C56.2623 104.724 59.9279 106.731 63.9835 106.731V103.131C61.1984 103.131 58.4165 101.765 55.8131 99.0249C53.2042 96.279 50.8768 92.2477 49.0825 87.2295L45.6927 88.4416ZM63.9835 106.731C69.8694 106.731 74.8921 102.542 78.5635 96.4256L75.4768 94.5729C72.0781 100.235 68.0122 103.131 63.9835 103.131V106.731ZM83.0064 86.2531C85.0269 79.7864 86.1832 72.1831 86.1832 64.0673H82.5832C82.5832 71.8536 81.4723 79.0919 79.5703 85.1795L83.0064 86.2531ZM86.1832 64.0673C86.1832 54.1144 84.4439 44.922 81.4961 37.6502C78.5748 30.4436 74.3436 24.8371 69.156 22.5301L67.6931 25.8194C71.6364 27.5731 75.3846 32.1564 78.1598 39.0026C80.9086 45.7836 82.5832 54.507 82.5832 64.0673H86.1832Z" fill="#A2ECFB"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M103.559 84.9077C103.559 82.4252 101.55 80.4127 99.071 80.4127C96.5924 80.4127 94.5831 82.4252 94.5831 84.9077C94.5831 87.3902 96.5924 89.4027 99.071 89.4027C101.55 89.4027 103.559 87.3902 103.559 84.9077V84.9077Z" stroke="#A2ECFB" stroke-width="3.6" stroke-linecap="round"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M28.8143 89.4027C31.2929 89.4027 33.3023 87.3902 33.3023 84.9077C33.3023 82.4252 31.2929 80.4127 28.8143 80.4127C26.3357 80.4127 24.3264 82.4252 24.3264 84.9077C24.3264 87.3902 26.3357 89.4027 28.8143 89.4027V89.4027V89.4027Z" stroke="#A2ECFB" stroke-width="3.6" stroke-linecap="round"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M64.8501 68.0857C62.6341 68.5652 60.451 67.1547 59.9713 64.9353C59.4934 62.7159 60.9007 60.5293 63.1167 60.0489C65.3326 59.5693 67.5157 60.9798 67.9954 63.1992C68.4742 65.4186 67.066 67.6052 64.8501 68.0857Z" fill="#A2ECFB"/>
+</svg>
+</file>
+
+<file path="src/renderer/src/assets/main.css">
+@import './base.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f4f6f8;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Leaflet fix: ensure tiles load correctly inside flex containers */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+}
+
+
+code {
+  font-weight: 600;
+  padding: 3px 5px;
+  border-radius: 2px;
+  background-color: var(--color-background-mute);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    Liberation Mono,
+    monospace;
+  font-size: 85%;
+}
+
+#root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  margin-bottom: 80px;
+}
+
+.logo {
+  margin-bottom: 20px;
+  -webkit-user-drag: none;
+  height: 128px;
+  width: 128px;
+  will-change: filter;
+  transition: filter 300ms;
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 1.2em #6988e6aa);
+}
+
+.creator {
+  font-size: 14px;
+  line-height: 16px;
+  color: var(--ev-c-text-2);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.text {
+  font-size: 28px;
+  color: var(--ev-c-text-1);
+  font-weight: 700;
+  line-height: 32px;
+  text-align: center;
+  margin: 0 10px;
+  padding: 16px 0;
+}
+
+.tip {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--ev-c-text-2);
+  font-weight: 600;
+}
+
+.react {
+  background: -webkit-linear-gradient(315deg, #087ea4 55%, #7c93ee);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+.ts {
+  background: -webkit-linear-gradient(315deg, #3178c6 45%, #f0dc4e);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  padding-top: 32px;
+  margin: -6px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.action {
+  flex-shrink: 0;
+  padding: 6px;
+}
+
+.action a {
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  border: 1px solid transparent;
+  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 20px;
+  padding: 0 20px;
+  line-height: 38px;
+  font-size: 14px;
+  border-color: var(--ev-button-alt-border);
+  color: var(--ev-button-alt-text);
+  background-color: var(--ev-button-alt-bg);
+}
+
+.action a:hover {
+  border-color: var(--ev-button-alt-hover-border);
+  color: var(--ev-button-alt-hover-text);
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+.versions {
+  position: absolute;
+  bottom: 30px;
+  margin: 0 auto;
+  padding: 15px 0;
+  font-family: 'Menlo', 'Lucida Console', monospace;
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  border-radius: 22px;
+  background-color: #202127;
+  backdrop-filter: blur(24px);
+}
+
+.versions li {
+  display: block;
+  float: left;
+  border-right: 1px solid var(--ev-c-gray-1);
+  padding: 0 20px;
+  font-size: 14px;
+  line-height: 14px;
+  opacity: 0.8;
+  &:last-child {
+    border: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .text {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 620px) {
+  .versions {
+    display: none;
+  }
+}
+
+@media (max-width: 350px) {
+  .tip,
+  .actions {
+    display: none;
+  }
+}
+</file>
+
+<file path="src/renderer/src/assets/wavy-lines.svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1422 800" opacity="0.3">
+  <defs>
+    <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="oooscillate-grad">
+      <stop stop-color="hsl(206, 75%, 49%)" stop-opacity="1" offset="0%"></stop>
+      <stop stop-color="hsl(331, 90%, 56%)" stop-opacity="1" offset="100%"></stop>
+    </linearGradient>
+  </defs>
+  <g stroke-width="1" stroke="url(#oooscillate-grad)" fill="none" stroke-linecap="round">
+    <path d="M 0 448 Q 355.5 -100 711 400 Q 1066.5 900 1422 448" opacity="0.05"></path>
+    <path d="M 0 420 Q 355.5 -100 711 400 Q 1066.5 900 1422 420" opacity="0.11"></path>
+    <path d="M 0 392 Q 355.5 -100 711 400 Q 1066.5 900 1422 392" opacity="0.18"></path>
+    <path d="M 0 364 Q 355.5 -100 711 400 Q 1066.5 900 1422 364" opacity="0.24"></path>
+    <path d="M 0 336 Q 355.5 -100 711 400 Q 1066.5 900 1422 336" opacity="0.30"></path>
+    <path d="M 0 308 Q 355.5 -100 711 400 Q 1066.5 900 1422 308" opacity="0.37"></path>
+    <path d="M 0 280 Q 355.5 -100 711 400 Q 1066.5 900 1422 280" opacity="0.43"></path>
+    <path d="M 0 252 Q 355.5 -100 711 400 Q 1066.5 900 1422 252" opacity="0.49"></path>
+    <path d="M 0 224 Q 355.5 -100 711 400 Q 1066.5 900 1422 224" opacity="0.56"></path>
+    <path d="M 0 196 Q 355.5 -100 711 400 Q 1066.5 900 1422 196" opacity="0.62"></path>
+    <path d="M 0 168 Q 355.5 -100 711 400 Q 1066.5 900 1422 168" opacity="0.68"></path>
+    <path d="M 0 140 Q 355.5 -100 711 400 Q 1066.5 900 1422 140" opacity="0.75"></path>
+    <path d="M 0 112 Q 355.5 -100 711 400 Q 1066.5 900 1422 112" opacity="0.81"></path>
+    <path d="M 0 84 Q 355.5 -100 711 400 Q 1066.5 900 1422 84" opacity="0.87"></path>
+    <path d="M 0 56 Q 355.5 -100 711 400 Q 1066.5 900 1422 56" opacity="0.94"></path>
+  </g>
+</svg>
+</file>
+
+<file path="src/renderer/src/components/AdminArea.tsx">
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Paper,
+  Grid,
+  Divider,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  IconButton,
+  Chip,
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Stack,
+  Tooltip,
+  CircularProgress,
+  InputAdornment,
+} from '@mui/material';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import CodeIcon from '@mui/icons-material/Code';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import StorageIcon from '@mui/icons-material/Storage';
+
+const ADMIN_PASSWORD = 'admin123';
+
+const SQL_TYPES = ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC', 'BOOLEAN', 'DATE', 'DATETIME'];
+
+interface ColumnDef {
+  name: string;
+  type: string;
+  notNull: boolean;
+  unique: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Login screen
+// ─────────────────────────────────────────────────────────────────────────────
+const AdminLogin: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState(false);
+
+  const handleLogin = () => {
+    if (password === ADMIN_PASSWORD) {
+      onSuccess();
+    } else {
+      setError(true);
+      setPassword('');
+    }
+  };
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        minHeight: 480,
+      }}
+    >
+      <Paper
+        elevation={4}
+        sx={{
+          p: 5,
+          maxWidth: 400,
+          width: '100%',
+          borderRadius: 3,
+        }}
+      >
+        <Stack spacing={2} sx={{ mb: 4, alignItems: 'center' }}>
+          <Box
+            sx={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              bgcolor: 'primary.main',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(46,125,50,0.3)',
+            }}
+          >
+            <LockIcon sx={{ color: 'white', fontSize: 30 }} />
+          </Box>
+          <Typography variant="h5" color="text.primary" sx={{ fontWeight: 700 }}>
+            Area Amministratore
+          </Typography>
+          <Typography variant="body2" color="text.secondary" align="center">
+            Inserisci la password per accedere alla gestione del database
+          </Typography>
+        </Stack>
+
+        <Stack spacing={2}>
+          {error && (
+            <Alert severity="error" onClose={() => setError(false)}>
+              Password errata. Riprova.
+            </Alert>
+          )}
+          <TextField
+            fullWidth
+            label="Password"
+            type={showPwd ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setError(false);
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowPwd((v) => !v)} edge="end">
+                      {showPwd ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <Button
+            fullWidth
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={handleLogin}
+            startIcon={<LockOpenIcon />}
+            sx={{
+              py: 1.5,
+              fontWeight: 700,
+            }}
+          >
+            Accedi
+          </Button>
+        </Stack>
+      </Paper>
+    </Box>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Create Table Panel
+// ─────────────────────────────────────────────────────────────────────────────
+const CreateTablePanel: React.FC = () => {
+  const [tableName, setTableName] = useState('');
+  const [columns, setColumns] = useState<ColumnDef[]>([
+    { name: '', type: 'TEXT', notNull: false, unique: false },
+  ]);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const addColumn = () =>
+    setColumns((prev) => [...prev, { name: '', type: 'TEXT', notNull: false, unique: false }]);
+
+  const removeColumn = (i: number) =>
+    setColumns((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updateColumn = (i: number, field: keyof ColumnDef, value: any) =>
+    setColumns((prev) => prev.map((col, idx) => (idx === i ? { ...col, [field]: value } : col)));
+
+  const handleCreate = async () => {
+    setSuccess(null);
+    setError(null);
+    const tname = tableName.trim();
+    if (!tname) return setError('Inserisci il nome della tabella.');
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tname))
+      return setError('Nome tabella non valido. Usa solo lettere, numeri e underscore.');
+
+    const cols = columns.filter((c) => c.name.trim());
+    if (cols.length === 0) return setError('Aggiungi almeno una colonna.');
+    for (const c of cols) {
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(c.name.trim()))
+        return setError(`Nome colonna non valido: "${c.name}"`);
+    }
+
+    const colDefs = [
+      'id INTEGER PRIMARY KEY AUTOINCREMENT',
+      ...cols.map(
+        (c) =>
+          `${c.name.trim()} ${c.type}${c.notNull ? ' NOT NULL' : ''}${c.unique ? ' UNIQUE' : ''}`
+      ),
+    ].join(', ');
+
+    const sql = `CREATE TABLE IF NOT EXISTS ${tname} (${colDefs})`;
+
+    setLoading(true);
+    try {
+      const res = await window.api.dbQuery(sql);
+      if (res.success) {
+        setSuccess(`Tabella "${tname}" creata con successo.`);
+        setTableName('');
+        setColumns([{ name: '', type: 'TEXT', notNull: false, unique: false }]);
+      } else {
+        setError(res.error || 'Errore sconosciuto.');
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      <Stack direction="row" spacing={1.5} sx={{ mb: 3, alignItems: 'center' }}>
+        <Box
+          sx={{
+            p: 1,
+            borderRadius: 2,
+            background: 'linear-gradient(135deg, #10b981, #059669)',
+            display: 'flex',
+          }}
+        >
+          <TableChartIcon sx={{ color: 'white', fontSize: 20 }} />
+        </Box>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          Crea Nuova Tabella
+        </Typography>
+      </Stack>
+
+      <Stack spacing={3}>
+        <TextField
+          fullWidth
+          label="Nome Tabella"
+          placeholder="es. documenti, storico_lavori"
+          value={tableName}
+          onChange={(e) => setTableName(e.target.value)}
+        />
+
+        <Box>
+          <Stack direction="row" sx={{ mb: 1.5, alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 600 }}>
+              COLONNE
+            </Typography>
+            <Tooltip title="Aggiungi colonna">
+              <IconButton size="small" color="primary" onClick={addColumn}>
+                <AddCircleOutlineIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+
+          {/* Fixed id column hint */}
+          <Paper
+            variant="outlined"
+            sx={{
+              px: 2,
+              py: 1,
+              mb: 1,
+              borderRadius: 2,
+              bgcolor: 'action.hover',
+              borderStyle: 'dashed',
+            }}
+          >
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Chip label="AUTO" size="small" color="primary" variant="outlined" />
+              <Typography variant="body2" color="text.secondary">
+                <strong>id</strong> — INTEGER PRIMARY KEY AUTOINCREMENT
+              </Typography>
+            </Stack>
+          </Paper>
+
+          <Stack spacing={1.5}>
+            {columns.map((col, i) => (
+              <Paper key={i} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                <Grid container spacing={1.5} sx={{ alignItems: 'center' }}>
+                  <Grid size={{ xs: 12, sm: 5 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Nome colonna"
+                      placeholder="es. nome, valore"
+                      value={col.name}
+                      onChange={(e) => updateColumn(i, 'name', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 3 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Tipo</InputLabel>
+                      <Select
+                        value={col.type}
+                        label="Tipo"
+                        onChange={(e) => updateColumn(i, 'type', e.target.value)}
+                      >
+                        {SQL_TYPES.map((t) => (
+                          <MenuItem key={t} value={t}>{t}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 'auto' }}>
+                    <Stack direction="row" spacing={0.5}>
+                      <Tooltip title="NOT NULL">
+                        <Chip
+                          label="NOT NULL"
+                          size="small"
+                          clickable
+                          color={col.notNull ? 'warning' : 'default'}
+                          variant={col.notNull ? 'filled' : 'outlined'}
+                          onClick={() => updateColumn(i, 'notNull', !col.notNull)}
+                        />
+                      </Tooltip>
+                      <Tooltip title="UNIQUE">
+                        <Chip
+                          label="UNIQUE"
+                          size="small"
+                          clickable
+                          color={col.unique ? 'info' : 'default'}
+                          variant={col.unique ? 'filled' : 'outlined'}
+                          onClick={() => updateColumn(i, 'unique', !col.unique)}
+                        />
+                      </Tooltip>
+                    </Stack>
+                  </Grid>
+                  <Grid size={{ xs: 'auto' }}>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => removeColumn(i)}
+                      disabled={columns.length === 1}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Grid>
+                </Grid>
+              </Paper>
+            ))}
+          </Stack>
+        </Box>
+
+        {error && <Alert severity="error">{error}</Alert>}
+        {success && (
+          <Alert severity="success" icon={<CheckCircleIcon />}>
+            {success}
+          </Alert>
+        )}
+
+        <Button
+          variant="contained"
+          size="large"
+          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <TableChartIcon />}
+          disabled={loading}
+          onClick={handleCreate}
+          sx={{
+            alignSelf: 'flex-start',
+            background: 'linear-gradient(135deg, #10b981, #059669)',
+            fontWeight: 700,
+            px: 3,
+            '&:hover': { background: 'linear-gradient(135deg, #0ea472, #048756)' },
+          }}
+        >
+          {loading ? 'Creazione...' : 'Crea Tabella'}
+        </Button>
+      </Stack>
+    </Box>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add Column Panel
+// ─────────────────────────────────────────────────────────────────────────────
+const AddColumnPanel: React.FC = () => {
+  const [tables, setTables] = useState<string[]>([]);
+  const [selectedTable, setSelectedTable] = useState('');
+  const [colName, setColName] = useState('');
+  const [colType, setColType] = useState('TEXT');
+  const [notNull, setNotNull] = useState(false);
+  const [unique, setUnique] = useState(false);
+  const [defaultVal, setDefaultVal] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchTables = async () => {
+    try {
+      const res = await window.api.dbQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      );
+      if (res.success && Array.isArray(res.data)) {
+        setTables(res.data.map((r: any) => r.name));
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchTables();
+  }, [success]);
+
+  const handleAdd = async () => {
+    setSuccess(null);
+    setError(null);
+    if (!selectedTable) return setError('Seleziona una tabella.');
+    if (!colName.trim()) return setError('Inserisci il nome della colonna.');
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(colName.trim()))
+      return setError('Nome colonna non valido. Usa solo lettere, numeri e underscore.');
+
+    let colDef = `${colName.trim()} ${colType}`;
+    if (notNull) colDef += ' NOT NULL';
+    if (unique) colDef += ' UNIQUE';
+    if (defaultVal.trim()) colDef += ` DEFAULT ${defaultVal.trim()}`;
+
+    const sql = `ALTER TABLE ${selectedTable} ADD COLUMN ${colDef}`;
+
+    setLoading(true);
+    try {
+      const res = await window.api.dbQuery(sql);
+      if (res.success) {
+        setSuccess(
+          `Colonna "${colName.trim()}" aggiunta alla tabella "${selectedTable}" con successo.`
+        );
+        setColName('');
+        setColType('TEXT');
+        setNotNull(false);
+        setUnique(false);
+        setDefaultVal('');
+      } else {
+        setError(res.error || 'Errore sconosciuto.');
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      <Stack direction="row" spacing={1.5} sx={{ mb: 3, alignItems: 'center' }}>
+        <Box
+          sx={{
+            p: 1,
+            borderRadius: 2,
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            display: 'flex',
+          }}
+        >
+          <PlaylistAddIcon sx={{ color: 'white', fontSize: 20 }} />
+        </Box>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          Aggiungi Colonna a Tabella Esistente
+        </Typography>
+      </Stack>
+
+      <Stack spacing={3}>
+        <FormControl fullWidth>
+          <InputLabel>Tabella</InputLabel>
+          <Select
+            value={selectedTable}
+            label="Tabella"
+            onChange={(e) => setSelectedTable(e.target.value)}
+          >
+            {tables.length === 0 ? (
+              <MenuItem disabled>Nessuna tabella trovata</MenuItem>
+            ) : (
+              tables.map((t) => (
+                <MenuItem key={t} value={t}>{t}</MenuItem>
+              ))
+            )}
+          </Select>
+        </FormControl>
+
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Nome Colonna"
+              placeholder="es. telefono, note"
+              value={colName}
+              onChange={(e) => setColName(e.target.value)}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth>
+              <InputLabel>Tipo SQL</InputLabel>
+              <Select
+                value={colType}
+                label="Tipo SQL"
+                onChange={(e) => setColType(e.target.value)}
+              >
+                {SQL_TYPES.map((t) => (
+                  <MenuItem key={t} value={t}>{t}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Valore di default (opzionale)"
+              placeholder="es. 0, 'N/A', NULL"
+              value={defaultVal}
+              onChange={(e) => setDefaultVal(e.target.value)}
+              helperText="Lascia vuoto per nessun default"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Vincoli
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <Chip
+                  label="NOT NULL"
+                  size="small"
+                  clickable
+                  color={notNull ? 'warning' : 'default'}
+                  variant={notNull ? 'filled' : 'outlined'}
+                  onClick={() => setNotNull((v) => !v)}
+                />
+                <Chip
+                  label="UNIQUE"
+                  size="small"
+                  clickable
+                  color={unique ? 'info' : 'default'}
+                  variant={unique ? 'filled' : 'outlined'}
+                  onClick={() => setUnique((v) => !v)}
+                />
+              </Stack>
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {/* SQL Preview */}
+        {selectedTable && colName.trim() && (
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              bgcolor: 'grey.900',
+              fontFamily: 'monospace',
+            }}
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              ANTEPRIMA SQL
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: '#a5f3fc', fontFamily: 'monospace', wordBreak: 'break-all' }}
+            >
+              ALTER TABLE <span style={{ color: '#fde68a' }}>{selectedTable}</span> ADD COLUMN{' '}
+              <span style={{ color: '#86efac' }}>{colName.trim()}</span>{' '}
+              <span style={{ color: '#c4b5fd' }}>{colType}</span>
+              {notNull && <span style={{ color: '#fca5a5' }}> NOT NULL</span>}
+              {unique && <span style={{ color: '#fca5a5' }}> UNIQUE</span>}
+              {defaultVal.trim() && (
+                <span style={{ color: '#fdba74' }}> DEFAULT {defaultVal.trim()}</span>
+              )}
+            </Typography>
+          </Paper>
+        )}
+
+        {error && <Alert severity="error">{error}</Alert>}
+        {success && (
+          <Alert severity="success" icon={<CheckCircleIcon />}>
+            {success}
+          </Alert>
+        )}
+
+        <Button
+          variant="contained"
+          size="large"
+          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <PlaylistAddIcon />}
+          disabled={loading}
+          onClick={handleAdd}
+          sx={{
+            alignSelf: 'flex-start',
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            fontWeight: 700,
+            px: 3,
+            '&:hover': { background: 'linear-gradient(135deg, #5558e8, #7c4fe0)' },
+          }}
+        >
+          {loading ? 'Aggiunta...' : 'Aggiungi Colonna'}
+        </Button>
+      </Stack>
+    </Box>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Raw SQL Panel (advanced)
+// ─────────────────────────────────────────────────────────────────────────────
+const RawSqlPanel: React.FC = () => {
+  const [query, setQuery] = useState('');
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleRun = async () => {
+    setError(null);
+    setResult(null);
+    setLoading(true);
+    try {
+      const res = await window.api.dbQuery(query);
+      if (res.success) setResult(res.data);
+      else setError(res.error || 'Errore sconosciuto');
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Alert severity="warning">
+        Attenzione: questa sezione esegue SQL arbitrario. Usare con cautela.
+      </Alert>
+      <TextField
+        fullWidth
+        multiline
+        rows={5}
+        label="Query SQL"
+        placeholder="SELECT * FROM clienti;"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        sx={{ fontFamily: 'monospace' }}
+      />
+      <Button
+        variant="contained"
+        color="secondary"
+        startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <CodeIcon />}
+        disabled={loading || !query.trim()}
+        onClick={handleRun}
+        sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
+      >
+        {loading ? 'Esecuzione...' : 'Esegui Query'}
+      </Button>
+
+      {error && <Alert severity="error">{error}</Alert>}
+      {result !== null && (
+        <Paper
+          variant="outlined"
+          sx={{ p: 2, borderRadius: 2, bgcolor: 'grey.900', overflow: 'auto', maxHeight: 300 }}
+        >
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            RISULTATO
+          </Typography>
+          <pre style={{ margin: 0, color: '#a5f3fc', fontSize: 12 }}>
+            {JSON.stringify(result, null, 2)}
+          </pre>
+        </Paper>
+      )}
+    </Stack>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main AdminArea
+// ─────────────────────────────────────────────────────────────────────────────
+const AdminArea: React.FC = () => {
+  const [authenticated, setAuthenticated] = useState(false);
+
+  if (!authenticated) {
+    return <AdminLogin onSuccess={() => setAuthenticated(true)} />;
+  }
+
+  return (
+    <Box sx={{ maxWidth: 900, mx: 'auto', py: 3 }}>
+      {/* Header */}
+      <Stack direction="row" spacing={2} sx={{ mb: 4, alignItems: 'center' }}>
+        <Box
+          sx={{
+            p: 1.5,
+            borderRadius: 2,
+            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+            display: 'flex',
+          }}
+        >
+          <StorageIcon sx={{ color: 'white', fontSize: 26 }} />
+        </Box>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+            Gestione Schema Database
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Crea tabelle, aggiungi colonne ed esegui query SQL
+          </Typography>
+        </Box>
+        <Box sx={{ flexGrow: 1 }} />
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<LockIcon />}
+          color="inherit"
+          onClick={() => setAuthenticated(false)}
+          sx={{ opacity: 0.6 }}
+        >
+          Esci
+        </Button>
+      </Stack>
+
+      <Stack spacing={3}>
+        {/* Create Table */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <CreateTablePanel />
+        </Paper>
+
+        <Divider />
+
+        {/* Add Column */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <AddColumnPanel />
+        </Paper>
+
+        <Divider />
+
+        {/* Advanced: Raw SQL */}
+        <Accordion
+          elevation={0}
+          sx={{
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: '12px !important',
+            '&:before': { display: 'none' },
+          }}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+              <CodeIcon fontSize="small" color="action" />
+              <Typography sx={{ fontWeight: 600 }}>Avanzato — Esecuzione SQL Diretta</Typography>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails>
+            <RawSqlPanel />
+          </AccordionDetails>
+        </Accordion>
+      </Stack>
+    </Box>
+  );
+};
+
+export default AdminArea;
+</file>
+
+<file path="src/renderer/src/components/ClienteModal.tsx">
+import React, { useState } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  Grid,
+  Typography,
+  CircularProgress,
+  Alert,
+} from '@mui/material';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import { useDispatch } from 'react-redux';
+import { AppDispatch } from '../store';
+import { createCliente, NewClientePayload } from '../store/appSlice';
+
+interface ClienteModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const emptyForm: NewClientePayload = {
+  ragione_sociale: '',
+  codice_fiscale: '',
+  partita_iva: '',
+  legale_rappresentante: '',
+  indirizzo_sede_legale: '',
+};
+
+const ClienteModal: React.FC<ClienteModalProps> = ({ open, onClose }) => {
+  const dispatch = useDispatch<AppDispatch>();
+  const [form, setForm] = useState<NewClientePayload>(emptyForm);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleChange = (field: keyof NewClientePayload) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  };
+
+  const handleSubmit = async () => {
+    if (!form.ragione_sociale.trim()) {
+      setError('La ragione sociale è obbligatoria.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await dispatch(createCliente(form)).unwrap();
+      setForm(emptyForm);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Errore durante il salvataggio.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (loading) return;
+    setForm(emptyForm);
+    setError(null);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <PersonAddIcon color="primary" />
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          Nuovo Cliente
+        </Typography>
+      </DialogTitle>
+
+      <DialogContent dividers>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12 }}>
+            <TextField
+              fullWidth
+              required
+              label="Ragione Sociale"
+              value={form.ragione_sociale}
+              onChange={handleChange('ragione_sociale')}
+              disabled={loading}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Codice Fiscale"
+              value={form.codice_fiscale}
+              onChange={handleChange('codice_fiscale')}
+              disabled={loading}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Partita IVA"
+              value={form.partita_iva}
+              onChange={handleChange('partita_iva')}
+              disabled={loading}
+            />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField
+              fullWidth
+              label="Legale Rappresentante"
+              value={form.legale_rappresentante}
+              onChange={handleChange('legale_rappresentante')}
+              disabled={loading}
+            />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField
+              fullWidth
+              label="Indirizzo Sede Legale"
+              value={form.indirizzo_sede_legale}
+              onChange={handleChange('indirizzo_sede_legale')}
+              disabled={loading}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={handleClose} disabled={loading} color="inherit">
+          Annulla
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={loading}
+          startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <PersonAddIcon />}
+        >
+          {loading ? 'Salvataggio...' : 'Crea Cliente'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+export default ClienteModal;
+</file>
+
+<file path="src/renderer/src/components/ClientiTable.tsx">
+import React, { useState } from 'react';
+import {
+  Box,
+  TextField,
+  Typography,
+  Button,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  InputAdornment,
+  Chip,
+  Skeleton,
+  Tooltip,
+} from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import WaterIcon from '@mui/icons-material/Water';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '../store';
+import { selectCliente } from '../store/appSlice';
+import ClienteModal from './ClienteModal';
+
+const ClientiTable: React.FC = () => {
+  const dispatch = useDispatch();
+  const { clienti, pozzi, loading } = useSelector((state: RootState) => state.app);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const filteredClienti = clienti.filter((c) => {
+    const q = searchTerm.toLowerCase();
+    return (
+      c.ragione_sociale?.toLowerCase().includes(q) ||
+      c.codice_fiscale?.toLowerCase().includes(q) ||
+      c.legale_rappresentante?.toLowerCase().includes(q) ||
+      c.partita_iva?.toLowerCase().includes(q)
+    );
+  });
+
+  const getPozziCount = (clienteId: number) =>
+    pozzi.filter((p) => p.id_cliente === clienteId).length;
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 2 }}>
+      {/* Header toolbar */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+        <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: 700 }}>
+          Clienti
+        </Typography>
+        <TextField
+          size="small"
+          placeholder="Cerca cliente..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{ width: 300 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <Button
+          variant="contained"
+          startIcon={<PersonAddIcon />}
+          onClick={() => setModalOpen(true)}
+        >
+          Nuovo Cliente
+        </Button>
+      </Box>
+
+      {/* Table */}
+      <TableContainer
+        component={Paper}
+        sx={{ flexGrow: 1, overflow: 'auto' }}
+        elevation={2}
+      >
+        <Table stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 700 }}>Ragione Sociale</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Legale Rappresentante</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Codice Fiscale</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Partita IVA</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Sede Legale</TableCell>
+              <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Pozzi</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading && clienti.length === 0
+              ? Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {Array.from({ length: 7 }).map((__, j) => (
+                      <TableCell key={j}>
+                        <Skeleton variant="text" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              : filteredClienti.map((cliente) => {
+                  const count = getPozziCount(cliente.id);
+                  return (
+                    <TableRow
+                      key={cliente.id}
+                      hover
+                      onClick={() => dispatch(selectCliente(cliente.id))}
+                      sx={{
+                        cursor: 'pointer',
+                        transition: 'background 0.15s',
+                        '&:hover td': { color: 'primary.main' },
+                      }}
+                    >
+                      <TableCell>
+                        <Typography sx={{ fontWeight: 600 }}>{cliente.ragione_sociale}</Typography>
+                      </TableCell>
+                      <TableCell>{cliente.legale_rappresentante || '—'}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                        {cliente.codice_fiscale || '—'}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                        {cliente.partita_iva || '—'}
+                      </TableCell>
+                      <TableCell>{cliente.indirizzo_sede_legale || '—'}</TableCell>
+                      <TableCell sx={{ textAlign: 'center' }}>
+                        <Tooltip title={`${count} pozzo/i associati`}>
+                          <Chip
+                            icon={<WaterIcon fontSize="small" />}
+                            label={count}
+                            size="small"
+                            color={count > 0 ? 'primary' : 'default'}
+                            variant={count > 0 ? 'filled' : 'outlined'}
+                          />
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell sx={{ width: 40 }}>
+                        <ChevronRightIcon color="action" />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+
+            {!loading && filteredClienti.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} sx={{ textAlign: 'center', py: 6 }}>
+                  <Typography color="text.secondary">
+                    {searchTerm ? 'Nessun cliente trovato per questa ricerca.' : 'Nessun cliente presente. Creane uno con "Nuovo Cliente".'}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      <ClienteModal open={modalOpen} onClose={() => setModalOpen(false)} />
+    </Box>
+  );
+};
+
+export default ClientiTable;
+</file>
+
+<file path="src/renderer/src/components/ListArea.tsx">
+import React, { useState } from 'react';
+import {
+  Box,
+  TextField,
+  List,
+  ListItem,
+  ListItemText,
+  Typography,
+  Button,
+  Paper,
+  ListItemButton,
+} from '@mui/material';
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '../store';
+import { selectPozzo } from '../store/appSlice';
+import AddIcon from '@mui/icons-material/Add';
+import NuovoPozzoModal from './NuovoPozzoModal';
+
+const ListArea: React.FC = () => {
+  const dispatch = useDispatch();
+  const { pozzi, selectedPozzoId, selectedClienteId } = useSelector(
+    (state: RootState) => state.app
+  );
+  const [searchTerm, setSearchTerm] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // Show only pozzi for the currently selected client
+  const clientePozzi = pozzi.filter((p) => p.id_cliente === selectedClienteId);
+
+  const filteredPozzi = clientePozzi.filter(
+    (p) =>
+      p.comune.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.localita.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, gap: 2 }}>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <TextField
+          fullWidth
+          variant="outlined"
+          placeholder="Cerca per comune o località..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+        />
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={() => setModalOpen(true)}
+        >
+          Nuovo
+        </Button>
+      </Box>
+
+      <Paper sx={{ flexGrow: 1, overflow: 'auto' }}>
+        <List>
+          {filteredPozzi.map((pozzo) => (
+            <ListItem disablePadding key={pozzo.id}>
+              <ListItemButton
+                selected={selectedPozzoId === pozzo.id}
+                onClick={() => dispatch(selectPozzo(pozzo.id))}
+              >
+                <ListItemText
+                  primary={`${pozzo.comune} - ${pozzo.localita}`}
+                  secondary={`Ettari bagnati: ${pozzo.ettari_bagnati}`}
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
+          {filteredPozzi.length === 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+              {clientePozzi.length === 0
+                ? 'Nessun pozzo per questo cliente. Creane uno!'
+                : 'Nessun pozzo trovato.'}
+            </Typography>
+          )}
+        </List>
+      </Paper>
+
+      {selectedClienteId !== null && (
+        <NuovoPozzoModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          idCliente={selectedClienteId}
+        />
+      )}
+    </Box>
+  );
+};
+
+export default ListArea;
+</file>
+
+<file path="src/renderer/src/components/MapArea.tsx">
+import React from 'react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '../store';
+import { selectPozzo } from '../store/appSlice';
+import { Box } from '@mui/material';
+import L from 'leaflet';
+
+// Fix Leaflet default icon broken paths in Vite/bundled environments
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+});
+
+// Centro sul Gargano, Puglia
+const GARGANO_CENTER: [number, number] = [41.88, 15.92];
+const DEFAULT_ZOOM = 10;
+
+const MapArea: React.FC = () => {
+  const dispatch = useDispatch();
+  const { pozzi, selectedClienteId } = useSelector((state: RootState) => state.app);
+
+  // Show only pozzi for the currently selected client
+  const clientePozzi = pozzi.filter((p) => p.id_cliente === selectedClienteId);
+
+  return (
+    <Box sx={{ height: '100%', width: '100%', borderRadius: '16px', overflow: 'hidden' }}>
+      <MapContainer
+        center={GARGANO_CENTER}
+        zoom={DEFAULT_ZOOM}
+        style={{ height: '100%', width: '100%' }}
+        scrollWheelZoom={true}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {clientePozzi.map((pozzo) => {
+          if (!pozzo.coordinate) return null;
+          try {
+            const coords = JSON.parse(pozzo.coordinate);
+            if (Array.isArray(coords) && coords.length === 2) {
+              return (
+                <Marker
+                  key={pozzo.id}
+                  position={[coords[0], coords[1]]}
+                  eventHandlers={{
+                    click: () => {
+                      dispatch(selectPozzo(pozzo.id));
+                    },
+                  }}
+                >
+                  <Popup>
+                    <strong>{pozzo.comune}</strong><br />
+                    {pozzo.localita}
+                  </Popup>
+                </Marker>
+              );
+            }
+          } catch (e) {
+            console.error('Invalid coordinates for pozzo', pozzo.id);
+          }
+          return null;
+        })}
+      </MapContainer>
+    </Box>
+  );
+};
+
+export default MapArea;
+</file>
+
+<file path="src/renderer/src/components/NuovoPozzoModal.tsx">
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  Grid,
+  Typography,
+  CircularProgress,
+  Alert,
+  InputAdornment,
+  Tooltip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Box,
+  Stack,
+  IconButton,
+} from '@mui/material';
+import WaterIcon from '@mui/icons-material/Water';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
+import { useDispatch } from 'react-redux';
+import { AppDispatch } from '../store';
+import { createPozzo, updatePozzo, createEttaroBagnato, Pozzo } from '../store/appSlice';
+
+interface NuovoPozzoModalProps {
+  open: boolean;
+  onClose: () => void;
+  idCliente: number;
+  pozzoToEdit?: Pozzo;
+}
+
+interface PozzoForm {
+  comune: string;
+  localita: string;
+  foglio: string;
+  particella: string;
+  ettari_bagnati: string;
+  scadenza_concessione: string;
+  coordinate: string;
+}
+
+interface EttaroBagnatoForm {
+  comune: string;
+  localita: string;
+  foglio: string;
+  particella: string;
+  ettari: string;
+  tipologia: string;
+  proprieta: string;
+}
+
+const emptyForm: PozzoForm = {
+  comune: '',
+  localita: '',
+  foglio: '',
+  particella: '',
+  ettari_bagnati: '',
+  scadenza_concessione: '',
+  coordinate: '',
+};
+
+const emptyEttaroForm: EttaroBagnatoForm = {
+  comune: '',
+  localita: '',
+  foglio: '',
+  particella: '',
+  ettari: '',
+  tipologia: '',
+  proprieta: '',
+};
+
+const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idCliente, pozzoToEdit }) => {
+  const dispatch = useDispatch<AppDispatch>();
+  const [form, setForm] = useState<PozzoForm>(emptyForm);
+  const [ettariForms, setEttariForms] = useState<EttaroBagnatoForm[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (pozzoToEdit) {
+      setForm({
+        comune: pozzoToEdit.comune || '',
+        localita: pozzoToEdit.localita || '',
+        foglio: pozzoToEdit.foglio || '',
+        particella: pozzoToEdit.particella || '',
+        ettari_bagnati: pozzoToEdit.ettari_bagnati ? pozzoToEdit.ettari_bagnati.toString() : '',
+        scadenza_concessione: pozzoToEdit.scadenza_concessione || '',
+        coordinate: pozzoToEdit.coordinate || '',
+      });
+    } else {
+      setForm(emptyForm);
+    }
+    setEttariForms([]);
+  }, [pozzoToEdit, open]);
+
+  const handleChange = (field: keyof PozzoForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  };
+
+  const handleEttaroChange = (index: number, field: keyof EttaroBagnatoForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEttariForms((prev) => {
+      const newForms = [...prev];
+      newForms[index] = { ...newForms[index], [field]: e.target.value };
+      return newForms;
+    });
+  };
+
+  const handleAddEttaro = () => {
+    setEttariForms((prev) => [emptyEttaroForm, ...prev]);
+  };
+
+  const handleRemoveEttaro = (index: number) => {
+    setEttariForms((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async () => {
+    if (!form.comune.trim()) {
+      setError('Il comune è obbligatorio.');
+      return;
+    }
+
+    if (form.coordinate.trim()) {
+      try {
+        const parsed = JSON.parse(form.coordinate);
+        if (!Array.isArray(parsed) || parsed.length !== 2) {
+          setError('Le coordinate devono essere nel formato [latitudine, longitudine], es: [41.88, 15.92]');
+          return;
+        }
+      } catch {
+        setError('Formato coordinate non valido. Usa JSON: [latitudine, longitudine], es: [41.88, 15.92]');
+        return;
+      }
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      let pozzoId = pozzoToEdit?.id;
+
+      if (pozzoToEdit) {
+        await dispatch(
+          updatePozzo({
+            id: pozzoToEdit.id,
+            data: {
+              ...form,
+              ettari_bagnati: parseFloat(form.ettari_bagnati) || 0,
+              id_cliente: idCliente,
+            }
+          })
+        ).unwrap();
+      } else {
+        const result = await dispatch(
+          createPozzo({
+            ...form,
+            ettari_bagnati: parseFloat(form.ettari_bagnati) || 0,
+            id_cliente: idCliente,
+          })
+        ).unwrap();
+        pozzoId = result.lastInsertRowid;
+      }
+
+      // Check if ettaro forms have some data, then save them
+      if (pozzoId) {
+        for (const ettaroForm of ettariForms) {
+          if (ettaroForm.comune.trim() || ettaroForm.particella.trim() || ettaroForm.foglio.trim()) {
+            await dispatch(
+              createEttaroBagnato({
+                ...ettaroForm,
+                ettari: parseFloat(ettaroForm.ettari) || 0,
+                id_pozzo: pozzoId,
+              })
+            ).unwrap();
+          }
+        }
+      }
+
+      handleClose();
+    } catch (err: any) {
+      setError(err.message || 'Errore durante il salvataggio.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (loading) return;
+    setForm(emptyForm);
+    setEttariForms([]);
+    setError(null);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <WaterIcon color="primary" />
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          {pozzoToEdit ? 'Modifica Pozzo' : 'Nuovo Pozzo'}
+        </Typography>
+      </DialogTitle>
+
+      <DialogContent dividers sx={{ p: 0 }}>
+        {error && (
+          <Box sx={{ p: 2 }}>
+            <Alert severity="error">{error}</Alert>
+          </Box>
+        )}
+        <Box sx={{ p: 3 }}>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                required
+                label="Comune"
+                value={form.comune}
+                onChange={handleChange('comune')}
+                disabled={loading}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Località"
+                value={form.localita}
+                onChange={handleChange('localita')}
+                disabled={loading}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Foglio"
+                value={form.foglio}
+                onChange={handleChange('foglio')}
+                disabled={loading}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Particella"
+                value={form.particella}
+                onChange={handleChange('particella')}
+                disabled={loading}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Ettari Bagnati"
+                type="number"
+                value={form.ettari_bagnati}
+                onChange={handleChange('ettari_bagnati')}
+                disabled={loading}
+                slotProps={{
+                  htmlInput: { step: '0.01', min: '0' },
+                  input: {
+                    endAdornment: <InputAdornment position="end">ha</InputAdornment>,
+                  },
+                }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Scadenza Concessione"
+                type="date"
+                value={form.scadenza_concessione}
+                onChange={handleChange('scadenza_concessione')}
+                disabled={loading}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                label="Coordinate"
+                placeholder="[41.88, 15.92]"
+                value={form.coordinate}
+                onChange={handleChange('coordinate')}
+                disabled={loading}
+                helperText="Formato JSON: [latitudine, longitudine]"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip title="Inserisci le coordinate come array JSON: [latitudine, longitudine]. Es: [41.88, 15.92]">
+                          <InfoOutlinedIcon fontSize="small" color="action" sx={{ cursor: 'help' }} />
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </Grid>
+          </Grid>
+        </Box>
+
+        <Box sx={{ px: 3, pb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              Ettari Bagnati Associati
+            </Typography>
+            <Button size="small" startIcon={<AddIcon />} onClick={handleAddEttaro} variant="outlined">
+              Aggiungi Ettaro
+            </Button>
+          </Box>
+
+          <Stack spacing={2}>
+            {ettariForms.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                Nessun ettaro bagnato associato. Clicca su "Aggiungi Ettaro" per inserirne uno.
+              </Typography>
+            )}
+            {ettariForms.map((ettaroForm, index) => (
+              <Accordion
+                key={index}
+                elevation={0}
+                defaultExpanded
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: '12px !important',
+                  '&:before': { display: 'none' },
+                }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', pr: 1 }}>
+                    <Typography sx={{ fontWeight: 600, color: 'primary.main', flexGrow: 1 }}>
+                      {ettaroForm.comune || ettaroForm.localita ? `Ettaro: ${ettaroForm.comune} ${ettaroForm.localita}`.trim() : `Nuovo Ettaro #${index + 1}`}
+                    </Typography>
+                    <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); handleRemoveEttaro(index); }}>
+                      <DeleteOutlinedIcon />
+                    </IconButton>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ px: 3, pb: 3, pt: 0 }}>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Comune"
+                        value={ettaroForm.comune}
+                        onChange={handleEttaroChange(index, 'comune')}
+                        disabled={loading}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Località"
+                        value={ettaroForm.localita}
+                        onChange={handleEttaroChange(index, 'localita')}
+                        disabled={loading}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Foglio"
+                        value={ettaroForm.foglio}
+                        onChange={handleEttaroChange(index, 'foglio')}
+                        disabled={loading}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Particella"
+                        value={ettaroForm.particella}
+                        onChange={handleEttaroChange(index, 'particella')}
+                        disabled={loading}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Ettari"
+                        type="number"
+                        value={ettaroForm.ettari}
+                        onChange={handleEttaroChange(index, 'ettari')}
+                        disabled={loading}
+                        slotProps={{
+                          htmlInput: { step: '0.01', min: '0' },
+                          input: {
+                            endAdornment: <InputAdornment position="end">ha</InputAdornment>,
+                          },
+                        }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Tipologia"
+                        value={ettaroForm.tipologia}
+                        onChange={handleEttaroChange(index, 'tipologia')}
+                        disabled={loading}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Proprietà"
+                        value={ettaroForm.proprieta}
+                        onChange={handleEttaroChange(index, 'proprieta')}
+                        disabled={loading}
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            ))}
+          </Stack>
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={handleClose} disabled={loading} color="inherit">
+          Annulla
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={loading}
+          startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <WaterIcon />}
+        >
+          {loading ? 'Salvataggio...' : pozzoToEdit ? 'Salva Modifiche' : 'Crea Pozzo'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+export default NuovoPozzoModal;
+</file>
+
+<file path="src/renderer/src/components/Versions.tsx">
+import { useState } from 'react'
+
+function Versions(): React.JSX.Element {
+  const [versions] = useState(window.electron.process.versions)
+
+  return (
+    <ul className="versions">
+      <li className="electron-version">Electron v{versions.electron}</li>
+      <li className="chrome-version">Chromium v{versions.chrome}</li>
+      <li className="node-version">Node v{versions.node}</li>
+    </ul>
+  )
+}
+
+export default Versions
+</file>
+
+<file path="src/renderer/src/store/appSlice.ts">
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+
+export interface Pozzo {
+  id: number;
+  comune: string;
+  localita: string;
+  foglio: string;
+  particella: string;
+  ettari_bagnati: number;
+  scadenza_concessione: string;
+  coordinate: string;
+  id_cliente: number;
+}
+
+export interface EttaroBagnato {
+  id: number;
+  comune: string;
+  localita: string;
+  foglio: string;
+  particella: string;
+  ettari: number;
+  tipologia: string;
+  proprieta: string;
+  id_pozzo: number;
+}
+
+export interface Cliente {
+  id: number;
+  ragione_sociale: string;
+  codice_fiscale: string;
+  partita_iva: string;
+  legale_rappresentante: string;
+  indirizzo_sede_legale: string;
+}
+
+export interface AppState {
+  pozzi: Pozzo[];
+  clienti: Cliente[];
+  ettariBagnati: EttaroBagnato[];
+  loading: boolean;
+  error: string | null;
+  selectedPozzoId: number | null;
+  selectedClienteId: number | null;
+}
+
+const initialState: AppState = {
+  pozzi: [],
+  clienti: [],
+  ettariBagnati: [],
+  loading: false,
+  error: null,
+  selectedPozzoId: null,
+  selectedClienteId: null,
+};
+
+export const fetchPozzi = createAsyncThunk('app/fetchPozzi', async () => {
+  const result = await window.api.dbQuery('SELECT * FROM pozzi_clienti');
+  if (result.success) return result.data;
+  throw new Error(result.error);
+});
+
+export const fetchClienti = createAsyncThunk('app/fetchClienti', async () => {
+  const result = await window.api.dbQuery('SELECT * FROM clienti');
+  if (result.success) return result.data;
+  throw new Error(result.error);
+});
+
+export const fetchEttariBagnati = createAsyncThunk('app/fetchEttariBagnati', async () => {
+  const result = await window.api.dbQuery('SELECT * FROM ettari_bagnati');
+  if (result.success) return result.data;
+  throw new Error(result.error);
+});
+
+export interface NewClientePayload {
+  ragione_sociale: string;
+  codice_fiscale: string;
+  partita_iva: string;
+  legale_rappresentante: string;
+  indirizzo_sede_legale: string;
+}
+
+export interface NewPozzoPayload {
+  comune: string;
+  localita: string;
+  foglio: string;
+  particella: string;
+  ettari_bagnati: number;
+  scadenza_concessione: string;
+  coordinate: string;
+  id_cliente: number;
+}
+
+export const createCliente = createAsyncThunk(
+  'app/createCliente',
+  async (payload: NewClientePayload, { dispatch }) => {
+    const result = await window.api.dbQuery(
+      `INSERT INTO clienti (ragione_sociale, codice_fiscale, partita_iva, legale_rappresentante, indirizzo_sede_legale)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        payload.ragione_sociale,
+        payload.codice_fiscale,
+        payload.partita_iva,
+        payload.legale_rappresentante,
+        payload.indirizzo_sede_legale,
+      ]
+    );
+    if (!result.success) throw new Error(result.error);
+    dispatch(fetchClienti());
+    return result.data;
+  }
+);
+
+export const createPozzo = createAsyncThunk(
+  'app/createPozzo',
+  async (payload: NewPozzoPayload, { dispatch }) => {
+    const result = await window.api.dbQuery(
+      `INSERT INTO pozzi_clienti (comune, localita, foglio, particella, ettari_bagnati, scadenza_concessione, coordinate, id_cliente)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        payload.comune,
+        payload.localita,
+        payload.foglio,
+        payload.particella,
+        payload.ettari_bagnati,
+        payload.scadenza_concessione,
+        payload.coordinate,
+        payload.id_cliente,
+      ]
+    );
+    if (!result.success) throw new Error(result.error);
+    dispatch(fetchPozzi());
+    return result.data;
+  }
+);
+
+export const updatePozzo = createAsyncThunk(
+  'app/updatePozzo',
+  async (payload: { id: number; data: NewPozzoPayload }, { dispatch }) => {
+    const result = await window.api.dbQuery(
+      `UPDATE pozzi_clienti 
+       SET comune = ?, localita = ?, foglio = ?, particella = ?, ettari_bagnati = ?, scadenza_concessione = ?, coordinate = ?
+       WHERE id = ?`,
+      [
+        payload.data.comune,
+        payload.data.localita,
+        payload.data.foglio,
+        payload.data.particella,
+        payload.data.ettari_bagnati,
+        payload.data.scadenza_concessione,
+        payload.data.coordinate,
+        payload.id,
+      ]
+    );
+    if (!result.success) throw new Error(result.error);
+    dispatch(fetchPozzi());
+    return result.data;
+  }
+);
+
+export interface NewEttaroBagnatoPayload {
+  comune: string;
+  localita: string;
+  foglio: string;
+  particella: string;
+  ettari: number;
+  tipologia: string;
+  proprieta: string;
+  id_pozzo: number;
+}
+
+export const createEttaroBagnato = createAsyncThunk(
+  'app/createEttaroBagnato',
+  async (payload: NewEttaroBagnatoPayload, { dispatch }) => {
+    const result = await window.api.dbQuery(
+      `INSERT INTO ettari_bagnati (comune, localita, foglio, particella, ettari, tipologia, proprieta, id_pozzo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        payload.comune,
+        payload.localita,
+        payload.foglio,
+        payload.particella,
+        payload.ettari,
+        payload.tipologia,
+        payload.proprieta,
+        payload.id_pozzo,
+      ]
+    );
+    if (!result.success) throw new Error(result.error);
+    dispatch(fetchEttariBagnati());
+    return result.data;
+  }
+);
+
+const appSlice = createSlice({
+  name: 'app',
+  initialState,
+  reducers: {
+    selectPozzo: (state, action: PayloadAction<number | null>) => {
+      state.selectedPozzoId = action.payload;
+    },
+    selectCliente: (state, action: PayloadAction<number | null>) => {
+      state.selectedClienteId = action.payload;
+      // Deselect any pozzo when switching client
+      state.selectedPozzoId = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchPozzi.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchPozzi.fulfilled, (state, action) => {
+        state.loading = false;
+        state.pozzi = action.payload;
+      })
+      .addCase(fetchPozzi.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Error fetching pozzi';
+      })
+      .addCase(fetchClienti.fulfilled, (state, action) => {
+        state.clienti = action.payload;
+      })
+      .addCase(fetchEttariBagnati.fulfilled, (state, action) => {
+        state.ettariBagnati = action.payload;
+      });
+  },
+});
+
+export const { selectPozzo, selectCliente } = appSlice.actions;
+export default appSlice.reducer;
+</file>
+
+<file path="src/renderer/src/store/index.ts">
+import { configureStore } from '@reduxjs/toolkit';
+import appReducer from './appSlice';
+
+export const store = configureStore({
+  reducer: {
+    app: appReducer,
+  },
+});
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+</file>
+
+<file path="src/renderer/src/App.tsx">
+import React, { useEffect } from 'react';
+import {
+  Box,
+  Grid,
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useDispatch, useSelector } from 'react-redux';
+import { AppDispatch, RootState } from './store';
+import { fetchPozzi, fetchClienti, fetchEttariBagnati, selectCliente } from './store/appSlice';
+import MapArea from './components/MapArea';
+import ListArea from './components/ListArea';
+import AdminArea from './components/AdminArea';
+import ClientiTable from './components/ClientiTable';
+
+const App: React.FC = () => {
+  const dispatch = useDispatch<AppDispatch>();
+  const { selectedClienteId, clienti } = useSelector((state: RootState) => state.app);
+  const [view, setView] = React.useState<'dashboard' | 'admin'>('dashboard');
+
+  useEffect(() => {
+    dispatch(fetchPozzi());
+    dispatch(fetchClienti());
+    dispatch(fetchEttariBagnati());
+  }, [dispatch]);
+
+  const selectedCliente = clienti.find((c) => c.id === selectedClienteId);
+
+  const handleBackToClienti = () => {
+    dispatch(selectCliente(null));
+  };
+
+  return (
+    <Box
+      sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}
+    >
+      <AppBar position="static" elevation={0}>
+        <Toolbar>
+          {/* Back button when inside a client detail view */}
+          {view === 'dashboard' && selectedClienteId !== null && (
+            <Tooltip title="Torna alla lista clienti">
+              <IconButton
+                color="inherit"
+                onClick={handleBackToClienti}
+                sx={{ mr: 1 }}
+                edge="start"
+              >
+                <ArrowBackIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700 }}>
+            Pozzi Discovery
+            {view === 'dashboard' && selectedCliente && (
+              <Typography
+                component="span"
+                variant="body2"
+                sx={{ ml: 1.5, opacity: 0.75, fontWeight: 400 }}
+              >
+                / {selectedCliente.ragione_sociale}
+              </Typography>
+            )}
+          </Typography>
+
+          <Button
+            color="inherit"
+            onClick={() => setView('dashboard')}
+            sx={{
+              fontWeight: view === 'dashboard' ? 700 : 400,
+              borderBottom: view === 'dashboard' ? '2px solid white' : 'none',
+              borderRadius: 0,
+            }}
+          >
+            Dashboard
+          </Button>
+          <Button
+            color="inherit"
+            onClick={() => setView('admin')}
+            sx={{
+              fontWeight: view === 'admin' ? 700 : 400,
+              borderBottom: view === 'admin' ? '2px solid white' : 'none',
+              borderRadius: 0,
+            }}
+          >
+            Admin
+          </Button>
+        </Toolbar>
+      </AppBar>
+
+      <Box sx={{ flexGrow: 1, p: 2, overflow: 'hidden', height: 0 }}>
+        {view === 'admin' ? (
+          <Box sx={{ height: '100%', overflow: 'auto' }}>
+            <AdminArea />
+          </Box>
+        ) : selectedClienteId === null ? (
+          /* HOME: full-screen client table */
+          <ClientiTable />
+        ) : (
+          /* DETAIL: map + well list for selected client */
+          <Grid container spacing={2} sx={{ height: '100%' }}>
+            <Grid size={{ xs: 12, md: 7, lg: 8 }} sx={{ height: '100%', minHeight: 0 }}>
+              <MapArea />
+            </Grid>
+            <Grid size={{ xs: 12, md: 5, lg: 4 }} sx={{ height: '100%', minHeight: 0 }}>
+              <ListArea />
+            </Grid>
+          </Grid>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+export default App;
+</file>
+
+<file path="src/renderer/src/env.d.ts">
+/// <reference types="vite/client" />
+</file>
+
+<file path="src/renderer/src/main.tsx">
+import './assets/main.css'
+import 'leaflet/dist/leaflet.css'
+
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import { Provider } from 'react-redux'
+import { store } from './store'
+import { ThemeProvider, CssBaseline } from '@mui/material'
+import { theme } from './theme'
+
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+  <React.StrictMode>
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <App />
+      </ThemeProvider>
+    </Provider>
+  </React.StrictMode>
+)
+</file>
+
+<file path="src/renderer/src/theme.ts">
+import { createTheme } from '@mui/material/styles';
+
+export const theme = createTheme({
+  palette: {
+    mode: 'light',
+    primary: {
+      main: '#2E7D32', // Verde foglia (Leaf Green)
+      light: '#60ad5e',
+      dark: '#005005',
+      contrastText: '#ffffff',
+    },
+    secondary: {
+      main: '#ffffff', // Bianco
+      light: '#ffffff',
+      dark: '#cccccc',
+      contrastText: '#000000',
+    },
+    background: {
+      default: '#f4f6f8',
+      paper: '#ffffff',
+    },
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h1: {
+      fontWeight: 700,
+    },
+    h2: {
+      fontWeight: 600,
+    },
+  },
+  shape: {
+    borderRadius: 12,
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          borderRadius: 8,
+          padding: '8px 16px',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)',
+          borderRadius: 16,
+        },
+      },
+    },
+  },
+});
+</file>
+
+<file path="src/renderer/index.html">
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Electron</title>
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+</file>
+
+<file path=".editorconfig">
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+</file>
+
+<file path=".gitignore">
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+</file>
+
+<file path=".npmrc">
+electron_mirror=https://npmmirror.com/mirrors/electron/
+electron_builder_binaries_mirror=https://npmmirror.com/mirrors/electron-builder-binaries/
+</file>
+
+<file path=".prettierignore">
+out
+dist
+pnpm-lock.yaml
+LICENSE.md
+tsconfig.json
+tsconfig.*.json
+</file>
+
+<file path=".prettierrc.yaml">
+singleQuote: true
+semi: false
+printWidth: 100
+trailingComma: none
+</file>
+
+<file path="database.sqlite-wal">
+
+</file>
+
+<file path="electron-builder.yml">
+appId: com.electron.app
+productName: pozzi-discovery
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+win:
+  executableName: pozzi-discovery
+  target: portable
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: ${name}-${version}.${ext}
+npmRebuild: false
+publish:
+  provider: generic
+  url: https://example.com/auto-updates
+</file>
+
+<file path="electron.vite.config.ts">
+import { resolve } from 'path'
+import { defineConfig } from 'electron-vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  main: {},
+  preload: {},
+  renderer: {
+    resolve: {
+      alias: {
+        '@renderer': resolve('src/renderer/src')
+      }
+    },
+    plugins: [react()]
+  }
+})
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig } from 'eslint/config'
+import tseslint from '@electron-toolkit/eslint-config-ts'
+import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier'
+import eslintPluginReact from 'eslint-plugin-react'
+import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
+import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
+
+export default defineConfig(
+  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  tseslint.configs.recommended,
+  eslintPluginReact.configs.flat.recommended,
+  eslintPluginReact.configs.flat['jsx-runtime'],
+  {
+    settings: {
+      react: {
+        version: 'detect'
+      }
+    }
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    plugins: {
+      'react-hooks': eslintPluginReactHooks,
+      'react-refresh': eslintPluginReactRefresh
+    },
+    rules: {
+      ...eslintPluginReactHooks.configs.recommended.rules,
+      ...eslintPluginReactRefresh.configs.vite.rules
+    }
+  },
+  eslintConfigPrettier
+)
+</file>
+
+<file path="package.json">
+{
+  "name": "pozzi-discovery",
+  "version": "1.0.0",
+  "description": "An Electron application with React and TypeScript",
+  "main": "./out/main/index.js",
+  "author": "example.com",
+  "homepage": "https://electron-vite.org",
+  "scripts": {
+    "format": "prettier --write .",
+    "lint": "eslint --cache .",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "build:unpack": "npm run build && electron-builder --dir",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:linux": "electron-vite build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.2.0",
+    "@mui/material": "^9.2.0",
+    "@reduxjs/toolkit": "^2.12.0",
+    "better-sqlite3": "^13.0.2",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^5.0.0",
+    "react-redux": "^9.3.0"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config-prettier": "^3.0.0",
+    "@electron-toolkit/eslint-config-ts": "^3.1.0",
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^22.19.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "prettier": "^3.7.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.6"
+  }
+}
+</file>
+
+<file path="README.md">
+# pozzi-discovery
+
+An Electron application with React and TypeScript
+
+## Recommended IDE Setup
+
+- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+
+## Project Setup
+
+### Install
+
+```bash
+$ npm install
+```
+
+### Development
+
+```bash
+$ npm run dev
+```
+
+### Build
+
+```bash
+# For windows
+$ npm run build:win
+
+# For macOS
+$ npm run build:mac
+
+# For Linux
+$ npm run build:linux
+```
+</file>
+
+<file path="tsconfig.json">
+{
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
+}
+</file>
+
+<file path="tsconfig.node.json">
+{
+  "extends": "./node_modules/@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*"],
+  "compilerOptions": {
+    "composite": true,
+    "types": ["electron-vite/node"]
+  }
+}
+</file>
+
+<file path="tsconfig.web.json">
+{
+  "extends": "./node_modules/@electron-toolkit/tsconfig/tsconfig.web.json",
+  "include": [
+    "src/renderer/src/env.d.ts",
+    "src/renderer/src/**/*",
+    "src/renderer/src/**/*.tsx",
+    "src/preload/*.d.ts"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": [
+        "src/renderer/src/*"
+      ]
+    }
+  }
+}
+</file>
+
+</files>
