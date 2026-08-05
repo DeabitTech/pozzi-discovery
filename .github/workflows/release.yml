@@ -21,6 +21,11 @@ jobs:
         with:
           node-version: 22 # Versione di Node richiesta dalle librerie
 
+      - name: Setup Python per node-gyp
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Python 3.11 è richiesto perché la 3.12 rimuove 'distutils' che serve a node-gyp
+
       - name: Installazione Dipendenze
         run: |
           npm ci
