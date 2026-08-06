@@ -554,7 +554,7 @@ const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idClie
             <Grid size={{ xs: 12, sm: 6 }}>
               <DatePicker
                 label="Scadenza Concessione"
-                format="MM/DD/YYYY"
+                format="DD/MM/YYYY"
                 value={form.scadenza_concessione ? dayjs(form.scadenza_concessione) : null}
                 onChange={(newValue) => {
                   setForm((prev) => ({
@@ -634,7 +634,7 @@ const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idClie
                 {meta.field_type === 'DATE' ? (
                   <DatePicker
                     label={meta.display_label || meta.column_name}
-                    format="MM/DD/YYYY"
+                    format="DD/MM/YYYY"
                     value={form[meta.column_name] ? dayjs(form[meta.column_name]) : null}
                     onChange={(newValue) => {
                       setForm((prev) => ({

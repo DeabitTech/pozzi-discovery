@@ -21,7 +21,7 @@ dayjs.extend(customParseFormat);
 // Parse date string
 const parseDate = (dateStr: string) => {
   if (!dateStr) return null;
-  let d = dayjs(dateStr, ['YYYY-MM-DD', 'MM/DD/YYYY', 'MM-DD-YYYY', 'DD/MM/YYYY'], true);
+  let d = dayjs(dateStr, ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY', 'DD-MM-YYYY', 'MM-DD-YYYY'], true);
   if (!d.isValid()) {
     d = dayjs(dateStr); // fallback to standard parsing
   }
@@ -36,6 +36,8 @@ interface KanbanItem {
   clienteNome: string;
   comune: string;
   localita: string;
+  foglio?: string;
+  particella?: string;
   scadenza_str: string;
   parsedDate: dayjs.Dayjs | null;
   column: BoardColumn;
@@ -74,7 +76,9 @@ const ScadenzeBoard: React.FC = () => {
         clienteNome: cliente ? cliente.ragione_sociale : 'Cliente sconosciuto',
         comune: pozzo.comune || '',
         localita: pozzo.localita || '',
-        scadenza_str: pozzo.scadenza_concessione ? (parsedDate ? parsedDate.format('MM/DD/YYYY') : pozzo.scadenza_concessione) : 'N/A',
+        foglio: pozzo.foglio || '',
+        particella: pozzo.particella || '',
+        scadenza_str: pozzo.scadenza_concessione ? (parsedDate ? parsedDate.format('DD/MM/YYYY') : pozzo.scadenza_concessione) : 'N/A',
         parsedDate,
         column,
         color,
@@ -87,7 +91,9 @@ const ScadenzeBoard: React.FC = () => {
     return (
       row.clienteNome.toLowerCase().includes(q) ||
       row.comune?.toLowerCase().includes(q) ||
-      row.localita?.toLowerCase().includes(q)
+      row.localita?.toLowerCase().includes(q) ||
+      row.foglio?.toLowerCase().includes(q) ||
+      row.particella?.toLowerCase().includes(q)
     );
   });
 
@@ -111,7 +117,7 @@ const ScadenzeBoard: React.FC = () => {
       {/* Header toolbar */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
         <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: 700 }}>
-          Scadenze Concessioni (Board)
+          Scadenze Concessioni
         </Typography>
         <TextField
           size="small"
@@ -178,7 +184,6 @@ const ScadenzeBoard: React.FC = () => {
                     borderLeft: `5px solid ${item.color}`,
                     transition: 'transform 0.15s, box-shadow 0.15s',
                     padding: 2,
-                    paddingBottom: 12,
                     '&:hover': {
                       transform: 'translateY(-2px)',
                       boxShadow: 3
@@ -193,11 +198,18 @@ const ScadenzeBoard: React.FC = () => {
                     </Typography>
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 2, opacity: 0.7 }}>
-                    <LocationOnIcon sx={{ fontSize: 14 }} />
-                    <Typography variant="caption" sx={{ lineHeight: 1.2 }}>
-                      {item.comune} {item.localita ? `(${item.localita})` : ''}
-                    </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 2, opacity: 0.7 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <LocationOnIcon sx={{ fontSize: 14 }} />
+                      <Typography variant="caption" sx={{ lineHeight: 1.2 }}>
+                        {item.comune} {item.localita ? `(${item.localita})` : ''}
+                      </Typography>
+                    </Box>
+                    {(item.foglio || item.particella) && (
+                      <Typography variant="caption" sx={{ lineHeight: 1.2, ml: 2.25 }}>
+                        Fg: {item.foglio || '-'} | Part: {item.particella || '-'}
+                      </Typography>
+                    )}
                   </Box>
 
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
