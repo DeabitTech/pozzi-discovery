@@ -7,9 +7,10 @@ import path from 'path';
 // In development, store it in the project root.
 // In production (portable mode), store it next to the executable.
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const prodDir = process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('userData');
 const dbPath = isDev 
   ? path.join(__dirname, '../../database.sqlite')
-  : path.join(path.dirname(app.getPath('exe')), 'database.sqlite');
+  : path.join(prodDir, 'database.sqlite');
 
 const db: SQLiteDatabase = new Database(dbPath, { verbose: console.log });
 db.pragma('journal_mode = WAL');
