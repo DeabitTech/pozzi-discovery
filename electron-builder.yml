@@ -1,5 +1,8 @@
 appId: com.algoritmo.pozzidiscovery
 productName: pozzi-discovery
+# Store (no compression) → Windows doesn't need to decompress on every launch.
+# Tradeoff: ~20-30% larger exe, but startup is 3-5x faster on portable builds.
+compression: store
 directories:
   buildResources: build
 files:
@@ -9,11 +12,20 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!node_modules/**/*.md'
+  - '!node_modules/**/*.map'
+  - '!node_modules/**/test/**'
+  - '!node_modules/**/tests/**'
+  - '!node_modules/**/__tests__/**'
+  - '!node_modules/**/docs/**'
+  - '!node_modules/**/examples/**'
 asarUnpack:
   - resources/**
 win:
   executableName: pozzi-discovery
-  target: portable
+  target:
+    - portable   # single-file, no install (slow: extracts to %TEMP% each launch)
+    - nsis       # traditional installer (fast: files extracted once at install time)
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
