@@ -28,7 +28,7 @@ jobs:
 
       - name: Installazione Dipendenze
         run: |
-          npm ci
+          npm install
           npx @electron/rebuild -f -o better-sqlite3
 
       - name: Build e Pacchettizzazione
