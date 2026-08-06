@@ -937,6 +937,7 @@ const emptyStep = (): StepData => ({
 
 // ── Simple import (unchanged) ────────────────────────────────────────────────
 const SimpleImportPanel: React.FC = () => {
+  const dispatch = useDispatch<AppDispatch>();
   const [tables, setTables] = useState<string[]>([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
@@ -989,6 +990,15 @@ const SimpleImportPanel: React.FC = () => {
       } catch { ko++; }
     }
     setImportResult({ success: ok, errors: ko }); setLoading(false); resetFile();
+
+    if (selectedTable === 'form_fields_metadata') {
+      try {
+        await window.api.syncSchema();
+        dispatch(fetchFormMetadata());
+      } catch (err) {
+        console.error('Errore durante la sincronizzazione dello schema', err);
+      }
+    }
   };
 
   return (

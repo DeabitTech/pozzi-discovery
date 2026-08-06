@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, session, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { initDB, runQuery } from './db'
+import { initDB, runQuery, syncCustomSchema } from './db'
 import { initDuckDB, getCoordinateCatastali } from './duckdbService'
 import { promises as fs } from 'fs'
 import fsSync from 'fs'
@@ -71,6 +71,16 @@ app.whenReady().then(() => {
       return { success: true, data: runQuery(query, params) };
     } catch (error: any) {
       console.error('Database query error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('sync-schema', async () => {
+    try {
+      syncCustomSchema();
+      return { success: true };
+    } catch (error: any) {
+      console.error('Sync schema error:', error);
       return { success: false, error: error.message };
     }
   });

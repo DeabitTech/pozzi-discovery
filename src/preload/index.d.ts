@@ -10,6 +10,7 @@ declare global {
       selectPdf: () => Promise<string | null>
       savePdf: (sourcePath: string) => Promise<{ success: boolean; data?: string; error?: string }>
       openPdf: (pdfPath: string) => Promise<{ success: boolean; error?: string }>
+      syncSchema: () => Promise<{ success: boolean; error?: string }>
     }
   }
 }

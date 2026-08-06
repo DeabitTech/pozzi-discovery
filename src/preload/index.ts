@@ -8,7 +8,8 @@ const api = {
   getComuni: () => ipcRenderer.invoke('get-comuni'),
   selectPdf: () => ipcRenderer.invoke('dialog:openPdf'),
   savePdf: (sourcePath: string) => ipcRenderer.invoke('save-pdf', sourcePath),
-  openPdf: (pdfPath: string) => ipcRenderer.invoke('open-pdf', pdfPath)
+  openPdf: (pdfPath: string) => ipcRenderer.invoke('open-pdf', pdfPath),
+  syncSchema: () => ipcRenderer.invoke('sync-schema')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

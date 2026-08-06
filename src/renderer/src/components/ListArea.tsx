@@ -105,11 +105,11 @@ const ListArea: React.FC = () => {
                     </ListItemIcon>
                     <ListItemText
                       primary={`${pozzo.comune} - ${pozzo.localita}`}
-                      secondary={`Ettari bagnati: ${pozzo.ettari_bagnati}`}
+                      secondary={`Fg: ${pozzo.foglio || '-'} | Part: ${pozzo.particella || '-'} | Ettari: ${pozzo.ettari_bagnati || 0}`}
                       sx={{ flexGrow: 1 }}
                     />
                     <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
-                      <IconButton aria-label="edit" onClick={() => { setPozzoToEdit(pozzo); setModalOpen(true); }} sx={{ mr: 1 }} size="small">
+                      <IconButton component="div" aria-label="edit" onClick={() => { setPozzoToEdit(pozzo); setModalOpen(true); }} sx={{ mr: 1 }} size="small">
                         <EditIcon fontSize="small" />
                       </IconButton>
                       <ConfirmDeleteButton

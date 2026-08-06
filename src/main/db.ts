@@ -140,6 +140,27 @@ export function initDB() {
   }
 }
 
+export function syncCustomSchema() {
+  try {
+    const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='form_fields_metadata'").get();
+    if (tableExists) {
+      const customFields = db.prepare('SELECT * FROM form_fields_metadata').all() as any[];
+      for (const field of customFields) {
+        try {
+          db.exec(`ALTER TABLE ${field.table_name} ADD COLUMN ${field.column_name} ${field.field_type}`);
+          console.log(`Colonna dinamica sincronizzata: ${field.table_name}.${field.column_name}`);
+        } catch (e: any) {
+          if (!e.message.includes('duplicate column name')) {
+            console.error(`Errore sinc schema per ${field.table_name}.${field.column_name}:`, e);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Errore globale durante syncCustomSchema:', err);
+  }
+}
+
 // Function to handle dynamic table alterations (Admin Area)
 export function runQuery(query: string, params: any[] = []) {
     const stmt = db.prepare(query);

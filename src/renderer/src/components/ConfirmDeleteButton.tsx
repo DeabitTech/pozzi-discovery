@@ -23,6 +23,7 @@ const ConfirmDeleteButton: React.FC<ConfirmDeleteButtonProps> = ({ onConfirm }) 
     <ClickAwayListener onClickAway={() => setConfirming(false)}>
       <Box sx={{ display: 'inline-flex', alignItems: 'center', overflow: 'hidden' }}>
         <Button
+          component="div"
           color="error"
           variant={confirming ? "contained" : "text"}
           onClick={handleClick}
