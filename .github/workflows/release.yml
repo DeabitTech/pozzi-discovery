@@ -29,6 +29,7 @@ jobs:
       - name: Installazione Dipendenze
         run: |
           npm install
+          npm install @rollup/rollup-win32-x64-msvc --no-save
           npx @electron/rebuild -f -o better-sqlite3
 
       - name: Build e Pacchettizzazione
