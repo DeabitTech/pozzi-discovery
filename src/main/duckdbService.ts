@@ -19,11 +19,21 @@ function queryDB(query: string, params: any[] = []): Promise<any[]> {
   });
 }
 
+let duckdbReady = false;
+
 // Initialize httpfs
 export async function initDuckDB() {
+  if (duckdbReady) return;
   try {
-    await queryDB("INSTALL httpfs;");
-    await queryDB("LOAD httpfs;");
+    // Try loading the cached extension first — fast path (no network)
+    try {
+      await queryDB("LOAD httpfs;");
+    } catch {
+      // Extension not cached yet: download it once
+      await queryDB("INSTALL httpfs;");
+      await queryDB("LOAD httpfs;");
+    }
+    duckdbReady = true;
     console.log("DuckDB httpfs extension loaded successfully.");
   } catch (err) {
     console.error("Failed to initialize DuckDB httpfs extension:", err);

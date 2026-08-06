@@ -6,7 +6,6 @@ import {
   InputAdornment,
   Paper,
   Card,
-  CardContent,
   Chip,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';

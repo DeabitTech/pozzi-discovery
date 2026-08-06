@@ -25,6 +25,8 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
     mainWindow.maximize()
+    // Init DuckDB in the background AFTER the window is visible — avoids blocking startup
+    initDuckDB();
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -59,9 +61,9 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
-  // Initialize SQLite database
+  // Initialize SQLite database synchronously — required before IPC handlers fire
   initDB();
-  initDuckDB();
+  // DuckDB is initialized lazily after the window is visible (see ready-to-show)
 
   // IPC handlers for database queries
   ipcMain.handle('db-query', async (_event, query: string, params: any[]) => {

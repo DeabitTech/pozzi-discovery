@@ -12,7 +12,7 @@ const dbPath = isDev
   ? path.join(__dirname, '../../database.sqlite')
   : path.join(prodDir, 'database.sqlite');
 
-const db: SQLiteDatabase = new Database(dbPath, { verbose: console.log });
+const db: SQLiteDatabase = new Database(dbPath, { verbose: isDev ? console.log : undefined });
 db.pragma('journal_mode = WAL');
 
 export function initDB() {
