@@ -87,6 +87,7 @@ interface NuovoPozzoModalProps {
 }
 
 interface PozzoForm {
+  codice_derivazione: string;
   comune: string;
   localita: string;
   foglio: string;
@@ -130,6 +131,7 @@ const filterComuniOptions = createFilterOptions<{nome: string, codiceCatastale: 
 });
 
 const emptyForm: PozzoForm = {
+  codice_derivazione: '',
   comune: '',
   localita: '',
   foglio: '',
@@ -186,6 +188,7 @@ const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idClie
   useEffect(() => {
     if (pozzoToEdit) {
       setForm({
+        codice_derivazione: pozzoToEdit.codice_derivazione || '',
         comune: pozzoToEdit.comune || '',
         localita: pozzoToEdit.localita || '',
         foglio: pozzoToEdit.foglio || '',
@@ -454,6 +457,15 @@ const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idClie
         <Box sx={{ p: 3 }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Codice Derivazione"
+                value={form.codice_derivazione}
+                onChange={handleChange('codice_derivazione')}
+                disabled={loading}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <Autocomplete
                 freeSolo
                 options={comuniList}
@@ -542,6 +554,7 @@ const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idClie
             <Grid size={{ xs: 12, sm: 6 }}>
               <DatePicker
                 label="Scadenza Concessione"
+                format="MM/DD/YYYY"
                 value={form.scadenza_concessione ? dayjs(form.scadenza_concessione) : null}
                 onChange={(newValue) => {
                   setForm((prev) => ({
@@ -621,6 +634,7 @@ const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idClie
                 {meta.field_type === 'DATE' ? (
                   <DatePicker
                     label={meta.display_label || meta.column_name}
+                    format="MM/DD/YYYY"
                     value={form[meta.column_name] ? dayjs(form[meta.column_name]) : null}
                     onChange={(newValue) => {
                       setForm((prev) => ({

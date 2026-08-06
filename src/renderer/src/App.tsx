@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Grid,
@@ -6,7 +6,10 @@ import {
   Toolbar,
   Typography,
   Button,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from './store';
 import { fetchPozzi, fetchClienti, fetchEttariBagnati, fetchFormMetadata, selectCliente } from './store/appSlice';
@@ -14,13 +17,14 @@ import MapArea from './components/MapArea';
 import ListArea from './components/ListArea';
 import AdminArea from './components/AdminArea';
 import ClientiTable from './components/ClientiTable';
+import ScadenzeBoard from './components/ScadenzeBoard';
 import SplashScreen from './components/SplashScreen';
 import logo from './assets/logo-black.jpg';
 
 const App: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { selectedClienteId, clienti } = useSelector((state: RootState) => state.app);
-  const [view, setView] = React.useState<'dashboard' | 'admin'>('dashboard');
+  const [view, setView] = React.useState<'dashboard' | 'admin' | 'scadenze'>('dashboard');
   const [showSplash, setShowSplash] = React.useState(true);
 
   useEffect(() => {
@@ -34,6 +38,17 @@ const App: React.FC = () => {
 
   const handleBackToClienti = () => {
     dispatch(selectCliente(null));
+  };
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    dispatch(fetchPozzi());
+    dispatch(fetchClienti());
+    dispatch(fetchEttariBagnati());
+    dispatch(fetchFormMetadata());
+    setTimeout(() => setRefreshing(false), 600);
   };
 
   return (
@@ -93,6 +108,17 @@ const App: React.FC = () => {
           </Button>
           <Button
             color="inherit"
+            onClick={() => setView('scadenze')}
+            sx={{
+              fontWeight: view === 'scadenze' ? 700 : 400,
+              borderBottom: view === 'scadenze' ? '2px solid white' : 'none',
+              borderRadius: 0,
+            }}
+          >
+            Scadenze
+          </Button>
+          <Button
+            color="inherit"
             onClick={() => setView('admin')}
             sx={{
               fontWeight: view === 'admin' ? 700 : 400,
@@ -102,6 +128,21 @@ const App: React.FC = () => {
           >
             Admin
           </Button>
+
+          <Tooltip title="Aggiorna dati">
+            <IconButton
+              color="inherit"
+              onClick={handleRefresh}
+              sx={{ ml: 1 }}
+            >
+              <RefreshIcon
+                sx={{
+                  transition: 'transform 0.6s ease',
+                  transform: refreshing ? 'rotate(360deg)' : 'rotate(0deg)',
+                }}
+              />
+            </IconButton>
+          </Tooltip>
         </Toolbar>
       </AppBar>
 
@@ -110,6 +151,8 @@ const App: React.FC = () => {
           <Box sx={{ height: '100%', overflow: 'auto' }}>
             <AdminArea />
           </Box>
+        ) : view === 'scadenze' ? (
+          <ScadenzeBoard />
         ) : selectedClienteId === null ? (
           /* HOME: full-screen client table */
           <ClientiTable />

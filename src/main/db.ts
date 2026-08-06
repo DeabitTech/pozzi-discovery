@@ -32,6 +32,7 @@ export function initDB() {
 
       CREATE TABLE pozzi_clienti (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codice_derivazione TEXT,
         comune TEXT,
         localita TEXT,
         foglio TEXT,
@@ -125,6 +126,15 @@ export function initDB() {
     } catch (e: any) {
       if (!e.message.includes('duplicate column name')) {
         console.error('Errore durante alter table pozzi_clienti per consumo_mc:', e);
+      }
+    }
+    
+    try {
+      db.exec(`ALTER TABLE pozzi_clienti ADD COLUMN codice_derivazione TEXT;`);
+      console.log('Colonna codice_derivazione aggiunta a pozzi_clienti.');
+    } catch (e: any) {
+      if (!e.message.includes('duplicate column name')) {
+        console.error('Errore durante alter table pozzi_clienti per codice_derivazione:', e);
       }
     }
   }

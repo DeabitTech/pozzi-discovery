@@ -71,7 +71,7 @@ const ListArea: React.FC = () => {
           {filteredPozzi.map((pozzo) => {
             const pozzoEttari = ettariBagnati.filter(e => e.id_pozzo === pozzo.id);
             return (
-              <Accordion 
+              <Accordion
                 key={pozzo.id}
                 expanded={selectedPozzoId === pozzo.id}
                 onChange={(_, expanded) => {
@@ -83,8 +83,8 @@ const ListArea: React.FC = () => {
                 }}
                 elevation={0}
                 disableGutters
-                sx={{ 
-                  '&:before': { display: 'none' }, 
+                sx={{
+                  '&:before': { display: 'none' },
                   bgcolor: '#ffffff',
                   borderRadius: 2,
                   overflow: 'hidden'
@@ -93,14 +93,14 @@ const ListArea: React.FC = () => {
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', pr: 1 }}>
                     <ListItemIcon sx={{ minWidth: 40 }}>
-                      <img 
-                        src={wellImage} 
-                        alt="Pozzo" 
-                        style={{ 
-                          width: 24, 
-                          height: 24, 
-                          filter: selectedPozzoId === pozzo.id ? 'drop-shadow(0px 0px 2px rgba(0,0,0,0.5))' : 'grayscale(100%) opacity(0.6)' 
-                        }} 
+                      <img
+                        src={wellImage}
+                        alt="Pozzo"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          filter: selectedPozzoId === pozzo.id ? 'drop-shadow(0px 0px 2px rgba(0,0,0,0.5))' : 'grayscale(100%) opacity(0.6)'
+                        }}
                       />
                     </ListItemIcon>
                     <ListItemText
@@ -112,8 +112,8 @@ const ListArea: React.FC = () => {
                       <IconButton aria-label="edit" onClick={() => { setPozzoToEdit(pozzo); setModalOpen(true); }} sx={{ mr: 1 }} size="small">
                         <EditIcon fontSize="small" />
                       </IconButton>
-                      <ConfirmDeleteButton 
-                        onConfirm={() => dispatch(deletePozzo(pozzo.id))} 
+                      <ConfirmDeleteButton
+                        onConfirm={() => dispatch(deletePozzo(pozzo.id))}
                       />
                     </Box>
                   </Box>
@@ -124,16 +124,16 @@ const ListArea: React.FC = () => {
                       {pozzoEttari.map((ettaro) => (
                         <ListItem key={ettaro.id} sx={{ bgcolor: '#f5f7f9', mb: 1, p: 2, borderRadius: 1 }}>
                           <ListItemIcon sx={{ minWidth: 32 }}>
-                            <Box 
-                              sx={{ 
-                                width: 14, 
-                                height: 14, 
-                                borderRadius: '50%', 
-                                bgcolor: ettaro.colore || '#ccc' 
-                              }} 
+                            <Box
+                              sx={{
+                                width: 14,
+                                height: 14,
+                                borderRadius: '50%',
+                                bgcolor: ettaro.colore || '#ccc'
+                              }}
                             />
                           </ListItemIcon>
-                          <ListItemText 
+                          <ListItemText
                             primary={`${ettaro.comune} - ${ettaro.localita}`}
                             secondary={`Fg: ${ettaro.foglio} Part: ${ettaro.particella} | Ettari: ${ettaro.ettari} | ${ettaro.tipologia}`}
                             slotProps={{
@@ -142,8 +142,8 @@ const ListArea: React.FC = () => {
                             }}
                           />
                           <Box sx={{ ml: 2 }}>
-                            <ConfirmDeleteButton 
-                              onConfirm={() => dispatch(deleteEttaroBagnato(ettaro.id))} 
+                            <ConfirmDeleteButton
+                              onConfirm={() => dispatch(deleteEttaroBagnato(ettaro.id))}
                             />
                           </Box>
                         </ListItem>

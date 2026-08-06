@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 
 export interface Pozzo {
   id: number;
+  codice_derivazione?: string;
   comune: string;
   localita: string;
   foglio: string;
