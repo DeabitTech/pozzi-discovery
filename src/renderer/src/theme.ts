@@ -50,5 +50,24 @@ export const theme = createTheme({
         },
       },
     },
+    MuiCssBaseline: {
+      styleOverrides: {
+        '*::-webkit-scrollbar': {
+          width: '8px',
+          height: '8px',
+        },
+        '*::-webkit-scrollbar-track': {
+          background: 'transparent', // Removes the binary background
+        },
+        '*::-webkit-scrollbar-thumb': {
+          backgroundColor: 'rgba(0, 0, 0, 0.15)',
+          borderRadius: '10px',
+          transition: 'background-color 0.2s',
+        },
+        '*::-webkit-scrollbar-thumb:hover': {
+          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        },
+      },
+    },
   },
 });

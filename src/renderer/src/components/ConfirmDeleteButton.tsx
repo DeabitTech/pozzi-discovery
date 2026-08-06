@@ -39,7 +39,7 @@ const ConfirmDeleteButton: React.FC<ConfirmDeleteButtonProps> = ({ onConfirm }) 
         >
           <DeleteIcon fontSize="small" sx={{ mr: confirming ? 1 : 0 }} />
           {confirming && (
-            <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'none' }}>
+            <Typography variant="caption" noWrap sx={{ fontWeight: 600, textTransform: 'none' }}>
               Clicca per confermare
             </Typography>
           )}
