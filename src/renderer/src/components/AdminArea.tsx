@@ -409,7 +409,7 @@ const AddColumnPanel: React.FC = () => {
       if (res.success && Array.isArray(res.data)) {
         setTables(res.data.map((r: any) => r.name));
       }
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -798,7 +798,7 @@ const ExportPanel: React.FC = () => {
       if (res.success && Array.isArray(res.data)) {
         setTables(res.data.map((r: any) => r.name));
       }
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -954,7 +954,7 @@ const SimpleImportPanel: React.FC = () => {
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
       );
       if (res.success && Array.isArray(res.data)) setTables(res.data.map((r: any) => r.name));
-    } catch {}
+    } catch { }
   };
   useEffect(() => { fetchTables(); }, [importResult]);
 
@@ -1055,8 +1055,10 @@ const SimpleImportPanel: React.FC = () => {
         startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <UploadIcon />}
         disabled={loading || !parsedRows.length || !selectedTable}
         onClick={handleImport}
-        sx={{ alignSelf: 'flex-start', background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-          fontWeight: 700, px: 3, '&:hover': { background: 'linear-gradient(135deg, #d97706, #b45309)' } }}>
+        sx={{
+          alignSelf: 'flex-start', background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+          fontWeight: 700, px: 3, '&:hover': { background: 'linear-gradient(135deg, #d97706, #b45309)' }
+        }}>
         {loading ? 'Importazione in corso…' : parsedRows.length > 0 ? `Importa ${parsedRows.length} righe` : 'Importa'}
       </Button>
     </Stack>
@@ -1065,9 +1067,9 @@ const SimpleImportPanel: React.FC = () => {
 
 // ── Guided import (relational) ───────────────────────────────────────────────
 const GUIDED_STEPS = [
-  { label: 'Clienti',        table: 'clienti',        fkCol: null,        fkMap: null },
-  { label: 'Pozzi',          table: 'pozzi_clienti',  fkCol: 'id_cliente', fkMap: 0  }, // idMap from step 0
-  { label: 'Ettari Bagnati', table: 'ettari_bagnati', fkCol: 'id_pozzo',  fkMap: 1  }, // idMap from step 1
+  { label: 'Clienti', table: 'clienti', fkCol: null, fkMap: null },
+  { label: 'Pozzi', table: 'pozzi_clienti', fkCol: 'id_cliente', fkMap: 0 }, // idMap from step 0
+  { label: 'Ettari Bagnati', table: 'ettari_bagnati', fkCol: 'id_pozzo', fkMap: 1 }, // idMap from step 1
 ] as const;
 
 const GuidedImportPanel: React.FC = () => {
@@ -1180,8 +1182,8 @@ const GuidedImportPanel: React.FC = () => {
                 optional={
                   isCompleted && stepData.result
                     ? <Typography variant="caption" color={stepData.result.errors === 0 ? 'success.main' : 'warning.main'}>
-                        {stepData.result.success} importati{stepData.result.errors > 0 ? `, ${stepData.result.errors} errori` : ''}
-                      </Typography>
+                      {stepData.result.success} importati{stepData.result.errors > 0 ? `, ${stepData.result.errors} errori` : ''}
+                    </Typography>
                     : undefined
                 }
               >
@@ -1243,13 +1245,15 @@ const GuidedImportPanel: React.FC = () => {
                       startIcon={loading && isActive ? <CircularProgress size={14} color="inherit" /> : <UploadIcon />}
                       disabled={loading || !stepData.rows.length}
                       onClick={() => handleImportStep(stepIdx)}
-                      sx={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', fontWeight: 700,
-                        '&:hover': { background: 'linear-gradient(135deg, #d97706, #b45309)' } }}>
+                      sx={{
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)', fontWeight: 700,
+                        '&:hover': { background: 'linear-gradient(135deg, #d97706, #b45309)' }
+                      }}>
                       {loading && isActive
                         ? 'Importazione…'
                         : stepIdx < GUIDED_STEPS.length - 1
-                        ? `Importa e avanza →`
-                        : 'Importa'}
+                          ? `Importa e avanza →`
+                          : 'Importa'}
                     </Button>
                     {stepIdx > 0 && (
                       <Button size="small" variant="text" color="inherit"
