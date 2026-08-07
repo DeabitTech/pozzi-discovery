@@ -1,6 +1,6 @@
 {
   "name": "pozzi-discovery",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Applicazione per la gestione dei pozzi",
   "main": "./out/main/index.js",
   "author": "Algoritmo",
