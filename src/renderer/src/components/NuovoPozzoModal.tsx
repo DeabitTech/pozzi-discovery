@@ -758,7 +758,7 @@ const NuovoPozzoModal: React.FC<NuovoPozzoModalProps> = ({ open, onClose, idClie
                     </IconButton>
                   </Box>
                 </AccordionSummary>
-                <AccordionDetails sx={{ px: 3, pb: 3, pt: 0 }}>
+                <AccordionDetails sx={{ px: 3, pb: 3, pt: 2 }}>
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <Autocomplete

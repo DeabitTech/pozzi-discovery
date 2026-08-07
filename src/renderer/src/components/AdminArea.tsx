@@ -27,6 +27,11 @@ import {
   StepContent,
   ToggleButton,
   ToggleButtonGroup,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
@@ -42,6 +47,7 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import StorageIcon from '@mui/icons-material/Storage';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useDispatch } from 'react-redux';
 import { AppDispatch } from '../store';
 import { fetchFormMetadata } from '../store/appSlice';
@@ -944,7 +950,7 @@ const SimpleImportPanel: React.FC = () => {
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([]);
   const [fileName, setFileName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; errors: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; errors: number; updated?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -979,17 +985,33 @@ const SimpleImportPanel: React.FC = () => {
     if (!selectedTable || !parsedRows.length) return;
     setLoading(true); setImportResult(null); setError(null);
     const cols = headers.filter(h => h !== 'id');
-    let ok = 0, ko = 0;
+    let ok = 0, ko = 0, updated = 0;
     for (const row of parsedRows) {
       const vals = cols.map(h => { const v = row[h]; return v === '' || v === undefined ? null : v; });
       try {
+        if (selectedTable === 'form_fields_metadata') {
+          const checkRes = await window.api.dbQuery(
+            `SELECT id FROM form_fields_metadata WHERE table_name = ? AND column_name = ?`,
+            [row['table_name'], row['column_name']]
+          );
+          if (checkRes.success && checkRes.data && checkRes.data.length > 0) {
+            // Update existing
+            await window.api.dbQuery(
+              `UPDATE form_fields_metadata SET display_label = ?, field_type = ? WHERE table_name = ? AND column_name = ?`,
+              [row['display_label'], row['field_type'], row['table_name'], row['column_name']]
+            );
+            updated++;
+            continue;
+          }
+        }
+
         const res = await window.api.dbQuery(
           `INSERT INTO ${selectedTable} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, vals
         );
         if (res.success) ok++; else ko++;
       } catch { ko++; }
     }
-    setImportResult({ success: ok, errors: ko }); setLoading(false); resetFile();
+    setImportResult({ success: ok, errors: ko, updated }); setLoading(false); resetFile();
 
     if (selectedTable === 'form_fields_metadata') {
       try {
@@ -1047,6 +1069,11 @@ const SimpleImportPanel: React.FC = () => {
           icon={<CheckCircleIcon />}>
           Import completato: <strong>{importResult.success} righe importate</strong>
           {importResult.errors > 0 && `, ${importResult.errors} con errore`}.
+        </Alert>
+      )}
+      {(importResult?.updated ?? 0) > 0 && (
+        <Alert severity="warning" sx={{ borderRadius: 2 }}>
+          <strong>Nota:</strong> {importResult!.updated} camp{importResult!.updated! > 1 ? 'i' : 'o'} con nome tecnico già esistente {importResult!.updated! > 1 ? 'sono stati aggiornati' : 'è stato aggiornato'} invece di essere duplicat{importResult!.updated! > 1 ? 'i' : 'o'}.
         </Alert>
       )}
       {error && <Alert severity="error">{error}</Alert>}
@@ -1309,6 +1336,143 @@ const ImportPanel: React.FC = () => {
 };
 
 
+// ── Danger Zone Panel ────────────────────────────────────────────────────────
+const DangerZonePanel: React.FC = () => {
+  const dispatch = useDispatch<AppDispatch>();
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ open: boolean; type: 'data' | 'schema' | null; title: string; content: string }>({ open: false, type: null, title: '', content: '' });
+
+  const openDataConfirm = () => {
+    setConfirmModal({
+      open: true,
+      type: 'data',
+      title: 'Attenzione: Operazione Irreversibile',
+      content: "Questa operazione eliminerà TUTTI i record di clienti, pozzi e ettari bagnati dal database. I dati saranno irrecuperabili. Ti consigliamo vivamente di effettuare prima un export/backup dei dati. Sei assolutamente sicuro di voler brasare tutti i dati?"
+    });
+  };
+
+  const openSchemaConfirm = () => {
+    setConfirmModal({
+      open: true,
+      type: 'schema',
+      title: 'Attenzione: Operazione Irreversibile',
+      content: "Verranno rimosse fisicamente tutte le colonne aggiuntive dal database e tutti i dati in esse contenuti andranno persi. Ti consigliamo vivamente di effettuare un backup prima di procedere. Sei sicuro di voler eliminare tutte le colonne dinamiche?"
+    });
+  };
+
+  const executeConfirm = async () => {
+    const type = confirmModal.type;
+    setConfirmModal({ ...confirmModal, open: false });
+    
+    if (type === 'data') {
+      await executeWipeData();
+    } else if (type === 'schema') {
+      await executeWipeSchema();
+    }
+  };
+
+  const executeWipeData = async () => {
+    setLoading(true); setMsg(null);
+    try {
+      await window.api.dbQuery('DELETE FROM ettari_bagnati');
+      await window.api.dbQuery('DELETE FROM pozzi_clienti');
+      await window.api.dbQuery('DELETE FROM clienti');
+      await window.api.dbQuery("DELETE FROM sqlite_sequence WHERE name IN ('clienti', 'pozzi_clienti', 'ettari_bagnati')");
+      
+      setMsg({ type: 'success', text: 'Tutti i dati sono stati eliminati con successo.' });
+    } catch (e: any) {
+      setMsg({ type: 'error', text: `Errore durante l'eliminazione dei dati: ${e.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeWipeSchema = async () => {
+    setLoading(true); setMsg(null);
+    try {
+      const res = await window.api.dbQuery('SELECT * FROM form_fields_metadata');
+      if (res.success && res.data) {
+        for (const row of res.data) {
+          try {
+            await window.api.dbQuery(`ALTER TABLE ${row.table_name} DROP COLUMN ${row.column_name}`);
+          } catch (dropErr: any) {
+            console.warn(`Errore drop colonna ${row.column_name}:`, dropErr);
+          }
+        }
+      }
+      
+      await window.api.dbQuery('DELETE FROM form_fields_metadata');
+      await window.api.dbQuery("DELETE FROM sqlite_sequence WHERE name='form_fields_metadata'");
+      
+      dispatch(fetchFormMetadata());
+      setMsg({ type: 'success', text: 'Tutte le colonne dinamiche sono state rimosse con successo.' });
+    } catch (e: any) {
+      setMsg({ type: 'error', text: `Errore durante l'eliminazione delle colonne: ${e.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      <Stack direction="row" spacing={1.5} sx={{ mb: 3, alignItems: 'center' }}>
+        <Box sx={{ p: 1, borderRadius: 2, background: 'linear-gradient(135deg, #ef4444, #dc2626)', display: 'flex' }}>
+          <WarningAmberIcon sx={{ color: 'white', fontSize: 20 }} />
+        </Box>
+        <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>Zona Pericolosa</Typography>
+      </Stack>
+
+      {msg && (
+        <Alert severity={msg.type} sx={{ mb: 3 }}>
+          {msg.text}
+        </Alert>
+      )}
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <Button 
+          variant="contained" 
+          color="error"
+          onClick={openDataConfirm}
+          disabled={loading}
+          sx={{ fontWeight: 700, flex: 1, py: 1.5 }}
+        >
+          {loading ? 'Attendere...' : 'Brasa Tutti i Dati DB'}
+        </Button>
+        <Button 
+          variant="outlined" 
+          color="error"
+          onClick={openSchemaConfirm}
+          disabled={loading}
+          sx={{ fontWeight: 700, flex: 1, py: 1.5, borderWidth: 2, '&:hover': { borderWidth: 2 } }}
+        >
+          {loading ? 'Attendere...' : 'Rimuovi Tutte le Colonne Dinamiche'}
+        </Button>
+      </Stack>
+
+      <Dialog open={confirmModal.open} onClose={() => setConfirmModal({ ...confirmModal, open: false })}>
+        <DialogTitle sx={{ color: 'error.main', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WarningAmberIcon /> {confirmModal.title}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ fontWeight: 500, color: 'text.primary', mt: 1 }}>
+            {confirmModal.content}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button onClick={() => setConfirmModal({ ...confirmModal, open: false })} variant="outlined" color="inherit">
+            Annulla
+          </Button>
+          <Button onClick={executeConfirm} variant="contained" color="error">
+            Sì, Procedi
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main AdminArea
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1403,6 +1567,21 @@ const AdminArea: React.FC = () => {
           }}
         >
           <ImportPanel />
+        </Paper>
+
+        <Divider />
+
+        {/* Danger Zone */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'error.main'
+          }}
+        >
+          <DangerZonePanel />
         </Paper>
 
         <Divider />
